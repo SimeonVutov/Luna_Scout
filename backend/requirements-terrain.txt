@@ -1,0 +1,8 @@
+numpy>=2.0
+rasterio>=1.4
+spiceypy>=6.0
+matplotlib>=3.8
+# tests
+pytest>=8
+scipy>=1.12
+pyproj>=3.6

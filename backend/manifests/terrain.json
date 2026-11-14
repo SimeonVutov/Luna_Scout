@@ -1,0 +1,33 @@
+{
+  "description": "Terrain inputs for LunaScout. Files live under DATA/ (not in git). Run scripts/fetch_data.py to download and verify them.",
+  "files": [
+    {
+      "id": "lola_ldem_80s_20m",
+      "path": "DATA/raw/lola/LDEM_80S_20MPP_ADJ.TIF",
+      "url": "https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LDEM_80S_20MPP_ADJ.TIF",
+      "product_page": "https://pgda.gsfc.nasa.gov/products/90",
+      "required": true,
+      "size_bytes": 2696082051,
+      "sha256": "09b7ca80f9e6a146f970225d18af72fc02787669b3ef51b888e347d2b6845649",
+      "verified_utc": "2026-11-14",
+      "content": "Surface height, 80S to pole, 20 m squares",
+      "format": "Cloud-optimized GeoTIFF, 30400 x 30400, float32, NaN = no data (none present), overviews 2-64x, 512x512 tiles",
+      "values": "Height in metres above a 1737.4 km reference sphere (radius = 1737400 + value)",
+      "crs": "+proj=stere +lat_0=-90 +lat_ts=-90 +lon_0=0 +x_0=0 +y_0=0 +R=1737400 +units=m",
+      "grid": "Top-left corner (-304000, 304000) m, 20 m squares, +y points toward 0 deg E (Earth side), +x toward 90 deg E",
+      "frame": "MOON_ME, Mean Earth/polar axis of JPL DE421. Use SPICE frame MOON_ME_DE440_ME421 when combining with DE440 ephemerides.",
+      "notes": "Every square has a value, but most squares near the pole are interpolated between laser tracks. See the LDEC count map for which squares were measured.",
+      "citation": "Barker, M.K. et al. (2023), Planet. Sci. J. 4, 183, doi:10.3847/PSJ/acf3e1; dataset doi:10.60903/gsfcpgda-lola-spole"
+    },
+    {
+      "id": "lola_ldec_80s_20m",
+      "path": "DATA/raw/lola/LDEC_80S_20MPP_ADJ.TIF",
+      "url": "https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LDEC_80S_20MPP_ADJ.TIF",
+      "product_page": "https://pgda.gsfc.nasa.gov/products/90",
+      "required": false,
+      "size_bytes": null,
+      "sha256": null,
+      "content": "Number of LOLA laser shots in each 20 m square (0 = height was interpolated)"
+    }
+  ]
+}

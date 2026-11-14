@@ -1,0 +1,35 @@
+{
+  "description": "NASA NAIF SPICE kernels for lunar orientation and time. They define the MOON_ME frame the terrain is in, so Sun/Earth/orbit data from JPL can be converted into it. See docs/CONVENTIONS.md.",
+  "files": [
+    {
+      "id": "lsk_naif0012",
+      "path": "DATA/raw/spice/naif0012.tls",
+      "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls",
+      "required": true,
+      "size_bytes": 5257,
+      "sha256": "678e32bdb5a744117a467cd9601cd6b373f0e9bc9bbde1371d5eee39600a039b",
+      "content": "Leap seconds table (UTC <-> TDB). Valid for dates through the next announced leap second; none announced as of 2026-11.",
+      "verified_utc": "2026-11-14"
+    },
+    {
+      "id": "bpc_moon_pa_de440",
+      "path": "DATA/raw/spice/moon_pa_de440_200625.bpc",
+      "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/moon_pa_de440_200625.bpc",
+      "required": true,
+      "size_bytes": 12863488,
+      "sha256": "60cd55aa401ea2ea97360636f567554bfe4e37bb829f901b4460a455dfaf783f",
+      "content": "Lunar orientation (libration) over time from DE440, principal-axes frame",
+      "verified_utc": "2026-11-14"
+    },
+    {
+      "id": "fk_moon_de440",
+      "path": "DATA/raw/spice/moon_de440_250416.tf",
+      "url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/fk/satellites/moon_de440_250416.tf",
+      "required": true,
+      "size_bytes": 19478,
+      "sha256": "a47c71e9c9f33796bdafb2c9d69a7ee447b6016ecad80f71cd6f3e479f9cf768",
+      "content": "Lunar frame definitions; MOON_ME = MOON_ME_DE440_ME421, aligned with the DE421 mean-Earth frame used by the LOLA DEM",
+      "verified_utc": "2026-11-14"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+# Data: downloaded and generated files stay out of git (sources + checksums: backend/manifests/).
+# The folder skeleton (README.md, .gitkeep) is kept.
+DATA/**
+!DATA/**/
+!DATA/README.md
+!DATA/**/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
