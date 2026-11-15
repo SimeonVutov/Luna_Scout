@@ -1,38 +1,89 @@
 # LunaScout
 
-**Compare lunar south-pole landing sites by sunlight and line of sight to Earth.**
+**Compare lunar south-pole landing sites and dates by sunlight, power and line of sight to Earth.**
 
-LunaScout is our project for the 2026 NASA Space Apps Challenge *Lunar Landing Site Navigator*. Pick a site and a date range, and LunaScout traces real NASA terrain against JPL Sun and Earth positions. It shows which parts of the site are lit, how much energy a panel would collect, and when Earth is in view for direct-to-Earth communication.
+LunaScout is a web application built for the 2026 NASA Space Apps Challenge, *Lunar Landing Site Navigator*. It answers the two questions that decide a south-pole mission: will the lander have power, and can it talk to Earth? It traces real NASA terrain against JPL ephemerides to show, for any site and date range, which ground is lit, when the Sun and Earth rise and set, and how two candidate sites compare.
+
+![LunaScout showing the Moon in 3D with three saved landing sites](docs/images/overview-3d.png)
+
+## Why it exists
+
+Near the Moon's south pole the Sun never climbs far above the horizon. Ridges a few hundred metres away throw shadows that last for days, and a place that is lit today can be dark next week. Earth can disappear behind the same ridges. Small changes in site or launch date therefore change power and communication windows dramatically.
+
+The tools that hold this data (NASA's Quickmap and Moon Trek, JPL Horizons) are built for specialists and answer one question at a time. LunaScout puts the terrain, the ephemerides and the physics behind one interface, so a mission planner can ask "what happens if the launch slips?" and see the answer, and a student can see why the Moon is hard.
+
+## At a glance
 
 | | |
 |---|---|
-| **Terrain** | NASA LOLA elevation models: 5 m around 10 candidate sites, 80 m and 240 m regionally |
-| **Sun & Earth** | NASA JPL Horizons vectors, rotated into the lunar frame with NAIF SPICE |
-| **Physics** | Finite solar disk, curved Moon, terrain shadows, Earth eclipses |
+| **Terrain** | NASA LOLA elevation models: 5 m around ten candidate sites, 80 m inside 80°S and 240 m out to 60°S |
+| **Sun and Earth** | NASA JPL Horizons vectors, rotated into the lunar frame with NAIF SPICE |
+| **Physics** | Finite Sun disk, curved Moon, terrain shadows, Earth eclipses, no atmosphere |
 | **Imagery** | NASA Moon Trek LROC WAC and NAC mosaics |
+| **Views** | Interactive 3D Moon and flat south-polar map, for one site or two side by side |
 
-## Features
+## What you can do
 
-- **Site catalogue.** 15 NASA reference sites (Artemis III regions, Lunar Surface Data Book sites, IM-2), or click anywhere from 60°S to 90°S to add your own.
-- **Time playback.** Scrub a shared UTC timeline. Snapshots appear as soon as they are computed.
-- **Sunlight map.** Each grid box is classified as fully lit, partly lit, dark or unresolved, using 37 rays across the Sun's disk.
-- **Power estimate.** Direct irradiance and energy (kWh/m²) on a vertical Sun-facing panel, on the ground, or on a horizontal plate.
-- **Earth visibility.** Line of sight from a mast at the site centre, including how much of Earth's disk is visible.
-- **Exact events.** Sunset, sunrise, Earthset and Earthrise at the site centre to about one second, plus the longest day, longest darkness and longest Earth contact.
-- **Terrain insight.** For every site: how fine the elevation data is (5 m, 80 m or 240 m, with a warning when coarse), slope statistics, and the share of ground at or below 5°, 10° and 15°.
-- **Lit and gentle.** The share of the site that is both in sunlight and on ground no steeper than 10°, updated with the timeline.
-- **Skyline close-up.** The Sun and Earth drawn against the real terrain horizon from the site centre, at true angular scale, with the visible share of their disks.
-- **Map layers.** Solar visibility, Earth radio coverage, slope and NASA's long-term maps, chosen from one **Layer** menu. The terrain card shows how fine the elevation data is at each site, so you can see where results are most trustworthy.
-- **Best spots.** Three layers (Sun, Earth contact, and both) mark which points of a site are good over the selected dates: lit at least 70% of the time, or with Earth in view at least 30%. Compare counts the share of each site's area that is good for Sun, for Earth contact and for both, and gives the longest day and longest darkness across every point of the site, not only its centre.
-- **NASA long-term maps.** Average sunlight and average Earth visibility over 18.6 years, permanent shadow (where ice can survive) and open sky, from NASA Goddard's LOLA illumination products. Pick them from the **Layer** menu on the map and in 3D. Compare shows each site's averages next to the numbers for the chosen dates, so you can tell a bad day from a bad place. These are averages over the whole site, never a single pixel.
-- **Earth radio coverage.** A map layer (2D, Compare and 3D) showing how much of Earth's disk each point of the site sees from mast height, and the share of the site that sees at least half of it. This is geometric line of sight through the terrain, not signal strength or a link budget.
-- **3D or 2D, for one site or two.** The app opens on the 3D view of a single site. A **3D / 2D** switch changes it to the flat south-polar map, and **Compare** shows two sites side by side in the same view, with their layer settings shared.
-- **3D view (the default).** The Moon as a globe with NASA photos, the Sun and Earth where JPL Horizons puts them, and LOLA relief that gets more detailed as you zoom toward the south pole. The Moon stays fixed and the sky moves, so playing the timeline never spins the scene. Toggle the simulation's Sun and Earth disk rays, the solar-visibility layer, vertical exaggeration, or stand at a site to see its sky. Shading shows relief only; sunlit and shadowed ground comes from the simulation.
-- **Comparison.** Run two sites with the same settings and the same playhead.
+### Explore a site in 3D
+
+The application opens on the Moon in 3D. The Sun and Earth sit where JPL Horizons puts them, and the terrain refines as you zoom from the whole globe down to individual rims and craters near the south pole. The Moon stays fixed and the sky moves around it, so playing the timeline never spins the scene.
+
+Pick a site from NASA's candidate list or click anywhere between 60°S and 90°S to add your own, then press play. The map shows what each part of the site sees at the chosen time.
+
+### See why a spot is dark
+
+Turn on **Sun rays** to draw the rays the simulation traces from many points across the site to the Sun's disk. A ray that reaches the Sun is yellow; a ray cut off by terrain is red and stops at the ridge that blocks it. Here the whole site of Malapert Massif is in shadow because a ridge between the site and the Sun hides it:
+
+![Sun rays from across the Malapert Massif site, all blocked by the ridge](docs/images/sun-rays.png)
+
+### Check the line of sight to Earth
+
+**Earth rays** does the same for Earth's disk, from mast height. Blue rays reach Earth and purple rays are blocked. The legend counts the rays that get through, and the **Earth radio coverage** layer colours every point of the site by how much of Earth it sees. Coverage here is geometric line of sight through the terrain, not a signal-strength or link-budget estimate.
+
+![Earth rays at Malapert Massif, where only a few rays reach Earth](docs/images/earth-rays.png)
+
+### Stand on the surface
+
+**Stand at site** puts the camera on the ground at the site centre, at mast height, and lets you look around. The Sun and Earth appear against the real horizon that the simulation uses, so you can see for yourself whether a ridge hides them. Click the **Sun** or **Earth** label to turn toward it.
+
+![View from the surface of de Gerlache Rim 1, with the Sun just above a distant ridge](docs/images/stand-at-site.png)
+
+### Compare two sites
+
+**Compare** places two sites side by side, in 3D or 2D, on one shared timeline. Each pane shows four headline numbers, the Sun or Earth against the real horizon at true angular scale, and the same layers and rays. Layer settings are shared, so both sites always show the same thing.
+
+![Malapert Massif and Nobile Rim 1 compared side by side, with Sun rays](docs/images/compare-live.png)
+
+### Read the numbers
+
+The **Whole period** view turns the comparison into a scorecard, with a marker on the better site for every row. It is grouped into power, communication, whole-site statistics and long-term context:
+
+![Scorecard comparing two sites across power, communication, whole-site and long-term metrics](docs/images/compare-scorecard.png)
+
+- **Power and communication** for the selected dates: solar energy on the receiver, sunlit time, longest day, longest darkness, Earth visibility, longest Earth contact and longest blackout, with sunrise, sunset, Earthrise and Earthset timed to about one second at the site centre.
+- **Across the whole site**: the longest day and longest darkness of the typical point and of the best spot, and the share of the site's area that is good for Sun, good for Earth contact and good for both.
+- **Long-term and terrain**: NASA's 18.6-year averages for sunlight and Earth visibility, permanent shadow, open sky, and slope. They separate a bad day from a bad place.
+
+Two charts follow the scorecard, one for the Sun and one for Earth, each with a menu for what to plot (lit area, lit and gentle ground, irradiance, Earth disk visibility and others):
+
+![Lit and gentle ground over time for two sites](docs/images/compare-chart.png)
+
+### Layers
+
+One **Layer** menu, on the flat map and in 3D, chooses what is drawn on the ground:
+
+| Layer | What it shows |
+|---|---|
+| Solar visibility | How much of the Sun each point sees at the timeline's time |
+| Earth radio coverage | How much of Earth each point sees from mast height |
+| Best spots for Sun, for Earth contact, for both | Points that are good over the whole selected period. Good for Sun means lit at least 70% of the time, good for Earth contact means Earth in view at least 30% |
+| Average sunlight, average Earth visibility | NASA LOLA 18.6-year averages |
+| Permanent shadow, open sky | Where the Sun never reaches, and how much sky the terrain leaves open |
+| Slope | Steepness of the ground on the flat map |
 
 ## Quick start
 
-**Requirements:** Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 22.12+, and about 1.7 GB of disk space for NASA data.
+**Requirements:** Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), Node.js 22.12 or newer, and about 1.7 GB of disk space for NASA data.
 
 Open three terminals in the repository root.
 
@@ -46,8 +97,9 @@ uv run --locked lunascout-worker
 ```
 
 ```sh
-# 2 · API
+# 2 · API (also set the same contact variable: the 3D view asks Horizons for Sun and Earth positions)
 cd backend
+export LUNASCOUT_HORIZONS_CONTACT='you@example.org'
 uv run --locked uvicorn lunascout.api.main:app --port 8000
 ```
 
@@ -58,47 +110,60 @@ npm ci
 npm run dev
 ```
 
-Open the URL Vite prints (usually <http://localhost:5173>). The API documentation is at <http://localhost:8000/docs>.
+Open the URL Vite prints, usually <http://localhost:5173>. The API documentation is at <http://localhost:8000/docs>.
 
-> **Tip:** to keep NASA data elsewhere, set `LUNASCOUT_DATA_DIR` to the same absolute path in terminals 1 and 2.
+To keep NASA data somewhere else, set `LUNASCOUT_DATA_DIR` to the same absolute path in terminals 1 and 2. Use your own address for the Horizons contact; JPL asks automated clients to identify themselves.
 
-## Using the dashboard
+## Using the application
 
-1. Choose a reference site, or press **Add site** and click the map.
-2. Set the UTC date range and press **Run simulation**. The playhead time is computed first.
-3. Scrub the timeline to explore snapshots. Choose what to draw from the **Layer** menu on the map (Solar visibility, Earth radio coverage, NASA long-term maps, Slope); use the **3D / 2D** switch to change between the globe and the flat map.
-4. Pick a second site under **Compare with** to see the two side by side.
+1. Choose a reference site, or press **Add site**, switch to the flat map and click where the site should be.
+2. Set the UTC date range on the timeline and press **Run simulation**. The playhead's time is computed first, so there is something to look at immediately.
+3. Press play or scrub the timeline. Use the **Layer** menu, **Sun rays** and **Earth rays** to see what each part of the site sees.
+4. Switch to **Compare**, choose two sites, and use **Live maps** or **Whole period**.
 
-The first run at a new site builds a terrain horizon map, which takes about 40–70 s. Later runs and date changes at that site reuse it.
+**One timeline for every site.** Changing the date range starts a simulation for all saved sites. Only the missing times are computed, because results stored for the same site and settings are reused, and narrowing the range deletes nothing. Long ranges are limited by how fast JPL Horizons answers: a year at 15-minute sampling needs about 2,200 requests, sent one at a time. Choose a coarser **Sample every** in Settings for ranges longer than a few months.
 
-**One timeline for every site.** Changing the date range starts a simulation for all your saved sites at once. Only the missing times are computed, because results already stored for the same site and settings are reused. Narrowing the range is instant and deletes nothing. Long ranges are limited by how fast JPL Horizons answers (a year at 15 minute sampling needs about 2,200 requests, and they must be sent one at a time), so choose a coarser **Sample every** in Settings for ranges longer than a few months.
+**Activity menu.** It shows whether the worker and API are running, what the worker is doing, and every recent simulation with its progress.
 
-**Activity menu.** Next to Settings, it shows whether the worker and API are running, what the worker is doing, and every recent simulation with its progress. It fetches the current state when the page opens. Each site card also shows a live progress bar and "Simulation done".
+**Deleting a site.** A site you created has its stored results removed to save space. A reference site keeps its results, hidden, for 14 days, and restores only the part inside the current timeline if you add it back.
 
-**Deleting a site.** A site you created yourself has its stored results removed to save space. A reference site keeps its results hidden for 14 days. If you add it back and run a timeline, only the part inside that timeline is restored, and the rest is discarded.
+The first run at a new site builds a terrain horizon map, which takes about a minute. Later runs and date changes at that site reuse it.
 
 ## How it works
 
 ```
 JPL Horizons ──► SPICE (UTC→TDB, ICRF→lunar frame) ──┐
-                                                     ├──► ray tracing per grid box ──► snapshots ──► API ──► website
-NASA LOLA DEMs ──► curved triangulated terrain ──────┘         (finite Sun disk,           (SQLite +
-                   └──► horizon map per box (cached)            Earth eclipse)             NumPy files)
+                                                     ├──► ray tracing per grid point ──► snapshots ──► API ──► website
+NASA LOLA DEMs ──► curved triangulated terrain ──────┘      (finite Sun disk,          (SQLite +       (REST + SSE)
+                   └──► horizon map per point (cached)       Earth eclipse)             NumPy files)
 ```
+
+- **Terrain** from several LOLA resolutions is combined into one curved, triangulated surface, with the grids stitched so no false cliff appears where they meet.
+- **Horizon maps.** For every point of a site the exact terrain horizon is computed once and cached. Rays far from the skyline are classified by lookup, and rays near it are traced exactly, so results equal tracing every ray but run much faster.
+- **Sun and Earth** are sampled as disks with equal-solid-angle rays (37 for the Sun), so partial shadow and partial Earth views are resolved. Earth can eclipse the Sun.
+- **Time.** Horizons states, with light time and aberration, are rotated into the Moon's own frame with SPICE kernels, which accounts for the Moon's orbit and libration. The Moon has no atmosphere, so the horizon is the terrain.
+- **Events.** Sunrise, sunset, Earthrise and Earthset at the site centre are refined by bisection to about one second.
+- **Per-point statistics.** Each saved snapshot is combined into every point's longest day, longest darkness and share of time lit and with Earth in view. These drive the best-spot layers and the whole-site comparison.
+- **Runs** are content-addressed and shared between date ranges, so a run is never computed twice.
+
+The 3D view streams LOLA elevation as tiles on the same grid as the NASA photos, and each tile refines as the camera approaches. Its rays come from the same calculation as the results panel and are saved with each snapshot, so the picture can never disagree with the numbers.
+
+## Project structure
 
 | Folder | Responsibility |
 |---|---|
 | `backend/lunascout/ephemeris` | Horizons requests, response cache, frame rotation |
-| `backend/lunascout/terrain` | DEM loading, ray tracer, horizon maps, elevation tiles for the 3D view |
-| `backend/lunascout/simulation` | Site grid, irradiance, Earth visibility, event windows |
+| `backend/lunascout/terrain` | DEM loading, ray tracer, horizon maps, elevation tiles, NASA long-term maps |
+| `backend/lunascout/simulation` | Site grid, irradiance, Earth visibility, event windows, per-point statistics |
 | `backend/lunascout/jobs` | Run queue, worker, time integration |
 | `backend/lunascout/api` | FastAPI routes and the site catalogue |
-| `frontend/src/features` | Map, 3D view, timeline, results |
-| `DATA/` | NASA inputs, caches and run outputs. See [DATA/README.md](DATA/README.md). |
+| `frontend/src/features` | 3D view, map, comparison, timeline, results, settings |
+| `frontend/src/styles` | Shared styles; each feature keeps its own stylesheet beside its components |
+| `DATA/` | NASA inputs, caches and run outputs. See [DATA/README.md](DATA/README.md) for the API and data layout |
 
 ## Command line
 
-Compute a single snapshot without the web app:
+Compute a single snapshot without the web application:
 
 ```sh
 cd backend
@@ -108,7 +173,7 @@ uv run --locked lunascout-science snapshot \
   --output ../DATA/runs/my-snapshot
 ```
 
-This writes `summary.json` and `grid.npz`. With these settings, Shackleton Rim is 95.9% lit, which is the project's regression reference.
+This writes `summary.json` and `grid.npz`. With these settings Shackleton Rim is 95.9% lit, which is the project's regression reference.
 
 ## Tests
 
@@ -117,12 +182,26 @@ cd backend
 uv run --locked --with pytest python -m pytest tests
 ```
 
-Tests that need the NASA data are skipped when it has not been downloaded.
+The suite covers the ray tracer, the horizon method against direct tracing, event timing, run queueing and reuse, elevation tiles, the rays and the per-point statistics. Tests that need the NASA data are skipped when it has not been downloaded. The frontend is checked with `npm run check` (TypeScript) and `npm run build`.
+
+## Accuracy and limitations
+
+- **Earth coverage is geometric.** It says whether terrain blocks the line to Earth, not whether a link would close. Antenna patterns, link budgets and Earth's atmosphere are not modelled.
+- **Terrain detail.** About 90% of the 5 m cells are interpolated between LOLA laser tracks (Barker et al. 2021), so grid spacing is not the same as measured detail. Each site reports which resolution it was computed from.
+- **Not modelled:** reflected light and Earthshine.
+- **Short events.** Events lasting under a minute can be missed.
+- **Coverage.** Terrain support is 60°S to 90°S. Sites can be saved elsewhere but are not simulated.
+- **Per-point statistics** treat each hourly snapshot as holding for its whole hour. The exact event times come from the site-centre windows.
+- **Good-spot standards.** The 70% and 30% thresholds are judgements, shown in the interface, not NASA requirements.
 
 ## Data sources
 
-- [NASA LOLA 5 m site DEMs](https://pgda.gsfc.nasa.gov/products/78) (Barker et al. 2021)
-- [NASA LOLA regional DEMs](https://pgda.gsfc.nasa.gov/products/90)
-- [JPL Horizons API](https://ssd-api.jpl.nasa.gov/doc/horizons.html) · [NAIF SPICE kernels](https://naif.jpl.nasa.gov/naif/data.html)
-- [NASA Moon Trek](https://trek.nasa.gov/moon/) (LROC imagery)
+All data comes from NASA.
+
+- [LOLA 5 m south-pole site DEMs](https://pgda.gsfc.nasa.gov/products/78) (Barker et al. 2021) and [LOLA regional DEMs](https://pgda.gsfc.nasa.gov/products/90)
+- [Lunar polar illumination, Earth visibility and sky visibility maps](https://pgda.gsfc.nasa.gov/products/69) (NASA Goddard PGDA)
+- [JPL Horizons](https://ssd-api.jpl.nasa.gov/doc/horizons.html) and [NAIF SPICE kernels](https://naif.jpl.nasa.gov/naif/data.html)
+- [NASA Moon Trek](https://trek.nasa.gov/moon/), LROC WAC and NAC imagery
 - Reference sites: [NASA Lunar Surface Data Book](https://ntrs.nasa.gov/citations/20230007818), Table A2-2
+
+Open-source software: React, Three.js, OpenLayers, Vite, FastAPI, NumPy, Numba, Rasterio and SpiceyPy.
