@@ -14,7 +14,7 @@ import proj4 from "proj4";
 import type { Coordinate, Site, SiteContext, SiteSpec, SlopeGrid, SunlightGrid } from "../../api/types";
 import { LayerLegend } from "../results/LayerLegend";
 import { LayerPicker } from "../results/LayerPicker";
-import { isContextLayer } from "../results/mapLayers";
+import { isContextLayer, layerAvailability } from "../results/mapLayers";
 import type { MapLayer } from "../results/mapLayers";
 import { contextOverlay, earthOverlay, slopeOverlay, sunlightOverlay } from "./sunlightOverlay";
 import { MapCompass } from "./MapCompass";
@@ -188,7 +188,7 @@ export function SouthPoleMap(props: Props) {
     <MapCompass orientation={orientation} />
     {!props.picking && (sunlight || slope || context) && <div className="map-simulation-key">
       <LayerPicker value={layer} onChange={props.onLayerChange}
-        has={{ sunlight: sunlight !== null, earth: hasEarth, slope: slope !== null, context: context !== null }} />
+        unavailable={layerAvailability({ sunlight: sunlight !== null, earth: hasEarth, slope: slope !== null, context: context !== null, slopeSupported: true })} />
       <LayerLegend layer={layer} />
     </div>}
     {props.picking && <p className="map-instruction">Click the map to place the site center</p>}

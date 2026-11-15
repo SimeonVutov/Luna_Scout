@@ -14,12 +14,19 @@ export const defaultOptions: SimulationOptions = {
   ray_method: "horizon",
 };
 
+/**
+ * Version of the simulation's results. Saved results are matched by their request, so this is part
+ * of it: when the results gain something new (match `MODEL_REVISION` in the backend's plan.py),
+ * older saved results are no longer reused and the site is computed again.
+ */
+const MODEL_REVISION = 5;
+
 function requestKey(site: Site, range: TimeRange, options: SimulationOptions) {
   return JSON.stringify([
     site.latitude_deg, site.longitude_deg, site.radius_m,
     range.start_utc, range.end_utc, range.snapshot_minutes,
     options.grid_spacing_m, options.solar_disk_samples, options.integration_minutes, options.mast_height_m,
-    options.collector_height_m, options.receiver, options.ray_method,
+    options.collector_height_m, options.receiver, options.ray_method, MODEL_REVISION,
   ]);
 }
 

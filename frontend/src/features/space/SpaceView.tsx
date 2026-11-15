@@ -3,7 +3,7 @@ import type { RayFan, RunStatus, SimulationOptions, Site, SiteContext, SunlightG
 import { contextCanvas, earthCanvas, sunlightCanvas } from "../globe/sunlightOverlay";
 import { LayerLegend } from "../results/LayerLegend";
 import { LayerPicker } from "../results/LayerPicker";
-import { isContextLayer } from "../results/mapLayers";
+import { isContextLayer, layerAvailability } from "../results/mapLayers";
 import { wholePercent } from "../results/format";
 import type { RigView } from "./cameraRig";
 import { defaultSpaceLayers } from "./layers";
@@ -176,7 +176,7 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
 
       <div className="space-layers">
         <LayerPicker value={resultLayer} onChange={setResultLayer}
-          has={{ sunlight: sunlight !== null, earth: hasEarth, slope: false, context: context !== null }} />
+          unavailable={layerAvailability({ sunlight: sunlight !== null, earth: hasEarth, slope: false, context: context !== null, slopeSupported: false })} />
         <div className="layer-buttons" role="group" aria-label="3D layers">
           <button className="button secondary" type="button" aria-pressed={sunRays} disabled={!supported} title={rayHint} onClick={() => setSunRays(!sunRays)}>Sun rays</button>
           <button className="button secondary" type="button" aria-pressed={earthRays} disabled={!supported} title={rayHint} onClick={() => setEarthRays(!earthRays)}>Earth rays</button>
