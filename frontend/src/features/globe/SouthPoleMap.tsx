@@ -16,7 +16,7 @@ import { SunlightLegend } from "../results/SunlightLegend";
 import { sunlightOverlay } from "./sunlightOverlay";
 import { MapCompass } from "./MapCompass";
 import type { Orientation } from "./MapCompass";
-import { detailExtent, detailLayer, edge, geographic, globalExtent, globalImagery, orbiterExtent, orbiterLayer, polar, polarImagery } from "./polarImagery";
+import { detailExtent, detailLayer, edge, geographic, globalExtent, globalImagery, polar, polarImagery } from "./polarImagery";
 import "ol/ol.css";
 
 type MapMode = "south" | "global";
@@ -74,10 +74,8 @@ export function SouthPoleMap(props: Props) {
     });
     const detail = new TileLayer({ extent: detailExtent, source: polarImagery(detailLayer, 12, detailExtent) });
     detail.setMaxResolution(460);
-    const orbiter = new TileLayer({ extent: orbiterExtent, source: polarImagery(orbiterLayer, 6, orbiterExtent) });
-    orbiter.setMaxResolution(330);
     const view = createView(mode);
-    const layers = mode === "south" ? [base, orbiter, detail] : [base];
+    const layers = mode === "south" ? [base, detail] : [base];
     const current = new Map({
       target: target.current, view,
       layers: [...layers, overlay, new VectorLayer({ source })],
@@ -92,16 +90,13 @@ export function SouthPoleMap(props: Props) {
       const atPole = mode === "south" ? Math.hypot(x, y) <= Math.max(1, meters * 2) : Math.abs(latitude) === 90;
       setScale(getPointResolution(view.getProjection(), meters, center, "m"));
       setOrientation({ longitude, latitude, northAngle: atPole ? null : mode === "south" ? Math.atan2(x, y) * 180 / Math.PI : 0 });
-      // Each finer photo fades in as the view zooms past what the layer below can show.
-      const fade = (from: number, span: number) => Math.max(0, Math.min(1, (from - meters) / span));
-      orbiter.setOpacity(fade(320, 140));
-      detail.setOpacity(fade(460, 300));
+      const blend = Math.max(0, Math.min(1, (460 - meters) / 300));
+      detail.setOpacity(blend);
     }
     updateView();
     setTileError(false);
     base.getSource()?.on("tileloaderror", () => setTileError(true));
     detail.getSource()?.on("tileloaderror", () => setTileError(true));
-    orbiter.getSource()?.on("tileloaderror", () => setTileError(true));
     view.on(["change:resolution", "change:center"], updateView);
     current.on("singleclick", (event) => {
       const state = actions.current;
@@ -193,7 +188,7 @@ export function SouthPoleMap(props: Props) {
       }}>South pole</button>
     </div>
     <div className="map-credits">
-      <a className="map-credit" href="https://trek.nasa.gov/moon/" target="_blank" rel="noreferrer">NASA Moon Trek · LROC WAC / NAC · Lunar Orbiter</a>
+      <a className="map-credit" href="https://trek.nasa.gov/moon/" target="_blank" rel="noreferrer">NASA Moon Trek · LROC WAC / NAC</a>
     </div>
   </section>;
 }
