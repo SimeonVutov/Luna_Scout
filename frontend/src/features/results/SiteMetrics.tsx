@@ -77,7 +77,9 @@ export function PeriodMetricsList({ run }: { run: RunStatus }) {
       <div><dt>Sunlit time · ≥ half the Sun</dt><dd>{bound(period.half_disk_sunlit_hours, decimal, " h")}</dd></div>
       <div><dt>Mean solar energy</dt><dd>{bound(period.incident_energy_kwh_m2, energy, " kWh/m²")}</dd></div>
       <div><dt>Earth visible time</dt><dd>{bound(period.earth_visible_hours, decimal, " h")}</dd></div>
+      <div><dt>Longest day · continuous sunlight</dt><dd>{longestLabel(period.longest_daylight)}</dd></div>
       <div><dt>Longest darkness at centre</dt><dd>{longestLabel(period.longest_darkness)}</dd></div>
+      <div><dt>Longest Earth contact</dt><dd>{longestLabel(period.longest_earth_contact)}</dd></div>
       <div><dt>Longest Earth blackout</dt><dd>{longestLabel(period.longest_earth_blackout)}</dd></div>
     </dl>
     <p className="result-note">Site metrics every {cadence} min · centre Sun and Earth windows to about 1 s. “≥” means the period ends before the state does.</p>

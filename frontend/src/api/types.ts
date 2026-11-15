@@ -85,6 +85,9 @@ export type PeriodSummary = PeriodMetrics & {
   sun_windows?: VisibilityWindow[] | null;
   longest_darkness?: LongestWindow | null;
   longest_earth_blackout?: LongestWindow | null;
+  /** Longest unbroken sunlight at the centre, and longest unbroken Earth visibility. */
+  longest_daylight?: LongestWindow | null;
+  longest_earth_contact?: LongestWindow | null;
 };
 
 export type RunStatus = {

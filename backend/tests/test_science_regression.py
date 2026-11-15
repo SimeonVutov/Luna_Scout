@@ -12,7 +12,7 @@ from lunascout.ephemeris.horizons import EphemerisSample
 from lunascout.jobs.metrics import Reading, integrate
 from lunascout.jobs.plan import RunPlan
 from lunascout.jobs.scheduler import RunQueue, WorkBatch
-from lunascout.simulation.engine import SimulationSettings, calculate_snapshot
+from lunascout.simulation.engine import Bounds, SimulationSettings, calculate_snapshot
 from lunascout.simulation.frames import SiteFootprint, local_axes, site_directions
 from lunascout.simulation.radiation import (
     AU_M,
@@ -307,3 +307,30 @@ def test_kept_results_expire_when_the_site_never_returns(tmp_path):
     assert queue.prune_kept(timedelta(days=14)) == 0
     assert queue.prune_kept(timedelta(seconds=-1)) == 1
     assert queue.status(plan.identity()) is None
+
+
+def test_longest_day_and_earth_contact_come_from_the_exact_windows():
+    from lunascout.jobs.metrics import PeriodSummary
+    from lunascout.simulation.events import VisibilityWindow
+
+    start = datetime(2026, 11, 15, tzinfo=UTC)
+    hours = lambda h: start + timedelta(hours=h)  # noqa: E731
+    sun = [
+        VisibilityWindow(start_utc=hours(0), end_utc=hours(5), visibility="clear"),
+        VisibilityWindow(start_utc=hours(5), end_utc=hours(9), visibility="blocked"),
+        VisibilityWindow(start_utc=hours(9), end_utc=hours(24), visibility="clear"),
+    ]
+    earth = [
+        VisibilityWindow(start_utc=hours(0), end_utc=hours(10), visibility="blocked"),
+        VisibilityWindow(start_utc=hours(10), end_utc=hours(16), visibility="clear"),
+        VisibilityWindow(start_utc=hours(16), end_utc=hours(24), visibility="blocked"),
+    ]
+    zero = Bounds(0, 0)
+    period = PeriodSummary(
+        sunlit_hours=zero, incident_energy_kwh_m2=None, earth_visible_hours=zero, earth_resolved_hours=0,
+        days=[], earth_windows=earth, sun_windows=sun,
+    )
+
+    # The longest day is the 15 h window that runs to the end of the period, so it is flagged as cut off.
+    assert period.longest_daylight.hours == 15 and period.longest_daylight.truncated
+    assert period.longest_earth_contact.hours == 6 and not period.longest_earth_contact.truncated

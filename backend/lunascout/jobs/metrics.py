@@ -4,7 +4,7 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from ..simulation.engine import BodyView, Bounds, SnapshotSummary, Visibility
 from ..simulation.events import CentreWindows, VisibilityWindow
@@ -52,6 +52,19 @@ class PeriodSummary(PeriodMetrics):
     sun_windows: list[VisibilityWindow] | None = None
     longest_darkness: LongestWindow | None = None
     longest_earth_blackout: LongestWindow | None = None
+    # The opposite states: the longest unbroken sunlight at the centre (the longest "day") and
+    # the longest unbroken Earth visibility. Derived from the exact windows, so they are also
+    # filled in for results saved before they existed.
+    longest_daylight: LongestWindow | None = None
+    longest_earth_contact: LongestWindow | None = None
+
+    @model_validator(mode="after")
+    def _fill_longest_clear_windows(self) -> "PeriodSummary":
+        if self.longest_daylight is None:
+            self.longest_daylight = _longest_in_windows(self.sun_windows, "clear")
+        if self.longest_earth_contact is None:
+            self.longest_earth_contact = _longest_in_windows(self.earth_windows, "clear")
+        return self
 
 
 @dataclass
@@ -234,6 +247,15 @@ def _accumulate_earth(
             accumulator.earth_clear += duration_hours
         elif visibility == "unknown":
             accumulator.earth_unknown += duration_hours
+
+
+def _longest_in_windows(
+    windows: Sequence[VisibilityWindow] | None, visibility: Visibility
+) -> LongestWindow | None:
+    """`_longest` for windows that tile the whole run, so the run's edges are the windows' edges."""
+    if not windows:
+        return None
+    return _longest(windows, visibility, windows[0].start_utc, windows[-1].end_utc)
 
 
 def _longest(

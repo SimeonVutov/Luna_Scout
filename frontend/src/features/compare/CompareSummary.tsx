@@ -36,7 +36,9 @@ const scoreRows: ScoreRow[] = [
   { label: "Sunlit time · any Sun", better: "higher", number: (p) => middle(p.sunlit_hours), text: (p) => hours(p.sunlit_hours) },
   { label: "Sunlit time · ≥ half the Sun", better: "higher", number: (p) => middle(p.half_disk_sunlit_hours), text: (p) => hours(p.half_disk_sunlit_hours) },
   { label: "Earth visible at mast", better: "higher", number: (p) => middle(p.earth_visible_hours), text: (p) => hours(p.earth_visible_hours) },
+  { label: "Longest day · continuous sunlight", better: "higher", number: (p) => p.longest_daylight?.hours ?? 0, text: (p) => longestLabel(p.longest_daylight) },
   { label: "Longest darkness at centre", better: "lower", number: (p) => p.longest_darkness?.hours ?? 0, text: (p) => longestLabel(p.longest_darkness) },
+  { label: "Longest Earth contact", better: "higher", number: (p) => p.longest_earth_contact?.hours ?? 0, text: (p) => longestLabel(p.longest_earth_contact) },
   { label: "Longest Earth blackout", better: "lower", number: (p) => p.longest_earth_blackout?.hours ?? 0, text: (p) => longestLabel(p.longest_earth_blackout) },
 ];
 
