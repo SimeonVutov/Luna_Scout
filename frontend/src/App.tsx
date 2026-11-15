@@ -12,6 +12,7 @@ import { Timeline } from "./features/timeline/Timeline";
 import type { ReadyTrack } from "./features/timeline/Timeline";
 import { ComparePicker } from "./features/compare/ComparePicker";
 import { CompareLive } from "./features/compare/CompareLive";
+import { CompareSummary } from "./features/compare/CompareSummary";
 import { slotColor, slotLabel, slots } from "./features/compare/slots";
 import type { Slot } from "./features/compare/slots";
 import { snapshotAt, todayRange } from "./features/timeline/time";
@@ -30,9 +31,11 @@ function errorText(error: unknown) {
 }
 
 type Mode = "explore" | "compare";
+type CompareView = "live" | "summary";
 
 export function App() {
   const [mode, setMode] = useState<Mode>("explore");
+  const [compareView, setCompareView] = useState<CompareView>("live");
   const [compareIds, setCompareIds] = useState<Record<Slot, string | null>>({ a: null, b: null });
   const [sites, setSites] = useState<Site[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -77,6 +80,8 @@ export function App() {
   const compareOutputA = useRunOutput(exploring ? null : compareRuns.a, timeIndex);
   const compareOutputB = useRunOutput(exploring ? null : compareRuns.b, timeIndex);
   const compareOutputs = { a: compareOutputA, b: compareOutputB };
+  const compareSeriesA = useRunSeries(exploring ? null : compareRuns.a);
+  const compareSeriesB = useRunSeries(exploring ? null : compareRuns.b);
 
   const selectedRun = science.status(selected);
   const selectedOutput = useRunOutput(exploring ? selectedRun : null, timeIndex);
@@ -212,6 +217,10 @@ export function App() {
             <button className="button secondary" type="button" aria-pressed={exploring} onClick={() => chooseMode("explore")}>Explore</button>
             <button className="button secondary" type="button" aria-pressed={!exploring} disabled={sites.length < 2} title={sites.length < 2 ? "Save two sites to compare them" : undefined} onClick={() => chooseMode("compare")}>Compare</button>
           </div>
+          {!exploring && <div className="view-switch" role="group" aria-label="Comparison view">
+            <button className="button secondary" type="button" aria-pressed={compareView === "live"} onClick={() => setCompareView("live")}>Live maps</button>
+            <button className="button secondary" type="button" aria-pressed={compareView === "summary"} onClick={() => setCompareView("summary")}>Whole period</button>
+          </div>}
           {exploring && <div className="view-switch" role="group" aria-label="Lunar view">
             <button className="button secondary" type="button" aria-pressed={!showTerrain} onClick={() => setTerrainMode(false)}>Map</button>
             <button className="button secondary" type="button" aria-pressed={showTerrain} disabled={!selected || selected.latitude_deg > -60 || !!draft} onClick={() => setTerrainMode(true)}>3D terrain</button>
@@ -243,7 +252,11 @@ export function App() {
         /> : <ComparePicker sites={sites} chosen={chosen} runs={compareRuns} options={options}
           submitting={submittedSites.some(science.submitting)} canStart={chosen.a !== null && chosen.b !== null && runnableSites.length > 0}
           onAssign={assign} onSwap={swap} onRun={() => void startRuns()} onOpenSettings={() => setSettingsOpen(true)} />}
-        {!exploring && <CompareLive at={instant} showSunlight={showSunlight} onToggleSunlight={() => setShowSunlight((value) => !value)}
+        {!exploring && compareView === "summary" && <CompareSummary range={range} at={instant} panes={{
+          a: { site: chosen.a, run: compareRuns.a, series: compareSeriesA },
+          b: { site: chosen.b, run: compareRuns.b, series: compareSeriesB },
+        }} />}
+        {!exploring && compareView === "live" && <CompareLive at={instant} showSunlight={showSunlight} onToggleSunlight={() => setShowSunlight((value) => !value)}
           panes={{
             a: { site: chosen.a, run: compareRuns.a, reading: compareOutputs.a.frame?.reading ?? null, sunlight: compareOutputs.a.frame?.grid ?? null },
             b: { site: chosen.b, run: compareRuns.b, reading: compareOutputs.b.frame?.reading ?? null, sunlight: compareOutputs.b.frame?.grid ?? null },
