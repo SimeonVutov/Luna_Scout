@@ -176,6 +176,22 @@ class Terrain:
         """
         return mesh.trace_rays_to_hits(origins_m, directions, self._depths, self._geometry)
 
+    def horizon_profiles(
+        self,
+        origins_m: FloatArray,
+        axes: tuple[FloatArray, FloatArray, FloatArray],
+        azimuth_count: int,
+    ) -> tuple[FloatArray, NDArray[np.bool_]]:
+        """Exact terrain horizon per receiver; see `mesh.horizon_profiles`.
+
+        `axes` holds each receiver's unit east, north and radial-up vectors,
+        each with shape (receivers, 3).
+        """
+        east, north, up = axes
+        return mesh.horizon_profiles(
+            origins_m, east, north, up, azimuth_count, self._depths, self._geometry
+        )
+
 
 def prepare_terrain(
     data_dir: Path,

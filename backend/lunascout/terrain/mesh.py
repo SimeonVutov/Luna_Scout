@@ -1,6 +1,6 @@
 """Ray intersections with a triangulated elevation grid on the lunar sphere."""
 
-from math import floor, inf, sqrt
+from math import atan2, cos, floor, inf, pi, sin, sqrt
 
 import numpy as np
 from numba import njit, prange
@@ -22,6 +22,11 @@ UNKNOWN = 2
 
 # Inverse-depth tolerance at the lunar radius is about 0.03 mm.
 _DEPTH_TOLERANCE = 1e-17
+
+# Horizon profiles test the envelope stopping rule every few edge crossings,
+# and give up (as incomplete) after an implausible number of crossings.
+_ENVELOPE_CHECK_INTERVAL = 8
+_MAX_PROFILE_CROSSINGS = 2_000_000
 
 
 @njit(inline="always")
@@ -237,6 +242,191 @@ def trace_rays_to_hits(
                 origins_m[index], directions[index, ray], depths, geometry
             )
     return statuses, hit_distances_m
+
+
+@njit(parallel=True)
+def horizon_profiles(
+    origins_m: FloatArray,
+    east: FloatArray,
+    north: FloatArray,
+    up: FloatArray,
+    azimuth_count: int,
+    depths: tuple[FloatArray, ...],
+    geometry: FloatArray,
+) -> tuple[FloatArray, NDArray[np.bool_]]:
+    """Highest terrain elevation angle per receiver at `azimuth_count` azimuths.
+
+    Receiver arrays have shape (receivers, 3) in Moon-fixed metres or unit
+    vectors. Azimuth k is (k + ½)·2π/K clockwise from each receiver's north.
+    Returns elevations in radians above the receiver's level plane and a flag that
+    is False where missing terrain could hide a higher ridge.
+    """
+    receivers = len(origins_m)
+    elevations_rad = np.empty((receivers, azimuth_count))
+    complete = np.empty((receivers, azimuth_count), dtype=np.bool_)
+    for receiver in prange(receivers):
+        for bin_index in range(azimuth_count):
+            azimuth = 2 * pi * (bin_index + 0.5) / azimuth_count
+            elevations_rad[receiver, bin_index], complete[receiver, bin_index] = _horizon_elevation(
+                origins_m[receiver],
+                east[receiver],
+                north[receiver],
+                up[receiver],
+                azimuth,
+                depths,
+                geometry,
+            )
+    return elevations_rad, complete
+
+
+@njit
+def _horizon_elevation(
+    origin_m: FloatArray,
+    east: FloatArray,
+    north: FloatArray,
+    up: FloatArray,
+    azimuth: float,
+    depths: tuple[FloatArray, ...],
+    geometry: FloatArray,
+) -> tuple[float, bool]:
+    """March one vertical plane outward from the receiver and keep the steepest terrain.
+
+    The plane contains the Moon's centre, so the gnomonic projection maps all of
+    its terrain onto one straight line through the receiver's projected position.
+    Each triangle is planar in 3D, so the elevation angle is monotonic along the
+    plane's cut through a triangle and its maximum lies on an edge crossing.
+    Visiting every grid, row, column and diagonal crossing therefore gives the
+    exact horizon of the triangulated surface.
+    """
+    if up[2] >= 0:
+        return -0.5 * pi, False
+
+    # Horizontal heading: h = cos A n + sin A e
+    #   h (heading) - Unit horizontal direction of the profile, Moon-fixed XYZ.
+    #   A (azimuth) - Clockwise azimuth from local north, in radians.
+    #   n, e (north, east) - Unit local horizontal axes of the receiver.
+    heading_x = cos(azimuth) * north[0] + sin(azimuth) * east[0]
+    heading_y = cos(azimuth) * north[1] + sin(azimuth) * east[1]
+    heading_z = cos(azimuth) * north[2] + sin(azimuth) * east[2]
+
+    # Projected profile line: E₀ = −R u_y/u_z; N₀ = −R u_x/u_z
+    #   ∂E = −R (h_y u_z − u_y h_z)/u_z²; ∂N = −R (h_x u_z − u_x h_z)/u_z²
+    #   E₀, N₀ (start_east, start_north) - Gnomonic position below the receiver, in metres.
+    #   ∂E, ∂N (step_east, step_north) - Projected direction of the profile, normalized below.
+    #   u (up) - Unit radial vertical at the receiver; h - unit horizontal heading.
+    #   R (MOON_RADIUS_M) - Projection radius, in metres.
+    start_east = -MOON_RADIUS_M * up[1] / up[2]
+    start_north = -MOON_RADIUS_M * up[0] / up[2]
+    step_east = -MOON_RADIUS_M * (heading_y * up[2] - up[1] * heading_z) / up[2] ** 2
+    step_north = -MOON_RADIUS_M * (heading_x * up[2] - up[0] * heading_z) / up[2] ** 2
+    step_length = sqrt(step_east**2 + step_north**2)
+    step_east /= step_length
+    step_north /= step_length
+
+    best_elevation = -0.5 * pi
+    complete = True
+    distance_m = 0.0
+    for crossing in range(_MAX_PROFILE_CROSSINGS):
+        point_east = start_east + distance_m * step_east
+        point_north = start_north + distance_m * step_north
+        level = _owning_level(depths, geometry, point_east, point_north)
+        if level < 0:
+            # The profile left every grid before the envelope proved it finished.
+            return best_elevation, False
+
+        left, bottom, spacing = geometry[level]
+        grid_east = (point_east - left) / spacing
+        grid_north = (point_north - bottom) / spacing
+        inverse_depth = interpolate_depth(depths[level], grid_east, grid_north)
+        if np.isfinite(inverse_depth):
+            elevation = _elevation_from_receiver(
+                origin_m, up, point_east, point_north, 1 / inverse_depth
+            )
+            best_elevation = max(best_elevation, elevation)
+        else:
+            complete = False
+
+        if crossing % _ENVELOPE_CHECK_INTERVAL == 0 and crossing > 0:
+            # The envelope point's elevation falls monotonically with distance for a
+            # receiver inside the envelope, so no terrain farther out can exceed it.
+            envelope_depth = OUTER_RADIUS_M / sqrt(
+                1 + (point_east / MOON_RADIUS_M) ** 2 + (point_north / MOON_RADIUS_M) ** 2
+            )
+            ceiling = _elevation_from_receiver(
+                origin_m, up, point_east, point_north, envelope_depth
+            )
+            if ceiling < best_elevation:
+                return best_elevation, complete
+
+        distance_m += _distance_to_next_edge(
+            grid_east, grid_north, step_east / spacing, step_north / spacing, spacing
+        )
+
+    return best_elevation, False
+
+
+@njit(inline="always")
+def _owning_level(
+    depths: tuple[FloatArray, ...], geometry: FloatArray, point_east: float, point_north: float
+) -> int:
+    """Finest grid whose node box contains the projected point, or −1."""
+    for level in range(len(depths) - 1, -1, -1):
+        left, bottom, spacing = geometry[level]
+        rows, columns = depths[level].shape
+        inside_east = left <= point_east <= left + spacing * (columns - 1)
+        inside_north = bottom <= point_north <= bottom + spacing * (rows - 1)
+        if inside_east and inside_north:
+            return level
+    return -1
+
+
+@njit(inline="always")
+def _elevation_from_receiver(
+    origin_m: FloatArray, up: FloatArray, point_east: float, point_north: float, depth: float
+) -> float:
+    """Elevation angle of a projected point at a given −Z depth, seen from the receiver."""
+    # Inverse gnomonic projection: x = (N d/R, E d/R, −d)
+    #   x - Moon-fixed position of the point, in metres.
+    #   E, N (point_east, point_north) - Projected coordinates, in metres.
+    #   d (depth) - Point depth along −Z, in metres; R (MOON_RADIUS_M) - projection radius.
+    offset_x = point_north * depth / MOON_RADIUS_M - origin_m[0]
+    offset_y = point_east * depth / MOON_RADIUS_M - origin_m[1]
+    offset_z = -depth - origin_m[2]
+
+    # Elevation above the level plane: el = atan2(v·u, √(‖v‖² − (v·u)²))
+    #   el - Angle above the receiver's local horizontal, in radians.
+    #   v (offset) - Receiver-to-point vector, in metres; u (up) - unit radial vertical.
+    rise = offset_x * up[0] + offset_y * up[1] + offset_z * up[2]
+    distance_sq = offset_x**2 + offset_y**2 + offset_z**2
+    return atan2(rise, sqrt(max(0.0, distance_sq - rise**2)))
+
+
+@njit(inline="always")
+def _distance_to_next_edge(
+    grid_east: float, grid_north: float, rate_east: float, rate_north: float, spacing: float
+) -> float:
+    """Projected metres to the next column, row or triangle-diagonal crossing.
+
+    Rates are grid cells per projected metre. Triangle diagonals lie on lines of
+    constant column + row, matching `triangle_plane`.
+    """
+    nearest = inf
+    for coordinate, rate in (
+        (grid_east, rate_east),
+        (grid_north, rate_north),
+        (grid_east + grid_north, rate_east + rate_north),
+    ):
+        # A point within 1e-9 cells of a line is on it; aim for the next line.
+        if rate > 1e-15:
+            crossing = (floor(coordinate + 1e-9) + 1 - coordinate) / rate
+        elif rate < -1e-15:
+            crossing = (np.ceil(coordinate - 1e-9) - 1 - coordinate) / rate
+        else:
+            crossing = inf
+        nearest = min(nearest, crossing)
+
+    # Guarantee progress if rounding lands exactly on a vertex.
+    return max(nearest, 1e-6 * spacing)
 
 
 @njit(inline="always")
