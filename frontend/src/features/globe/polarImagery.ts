@@ -20,6 +20,10 @@ addProjection(new Projection({
   units: "degrees",
   extent: [-180, -90, 180, 90],
   metersPerUnit: Math.PI * radius / 180,
+  // Mean local pixel scale: δ_local = δ(1 + cos φ)/2.
+  // δ_local, δ - Angular pixel scales in degrees; φ - Latitude, converted to radians.
+  // The projection's lunar metresPerUnit converts this to metres, avoiding Earth's radius.
+  getPointResolution: (pixel, [, latitude]) => pixel * (1 + Math.cos(latitude * Math.PI / 180)) / 2,
 }));
 register(proj4);
 const projection = getProjection(polar)!;
@@ -30,25 +34,28 @@ export const detailExtent = [-136526, -136525, 136525, 136526];
 export const detailLayer = "LRO_NAC_AvgMosaic_SPole855_1mp";
 export const polarCoverages = [
   { latitude: -85.5, label: "85.5°S · NAC imagery", color: "#9ee4d5" },
-  { latitude: -87.5, label: "87.5°S · LOLA 5 m terrain coverage", color: "#e4c48c" },
+  { latitude: -87.5, label: "87.5°S · PDS LOLA 5 m extent", color: "#e4c48c" },
 ] as const;
 export function polarRadius(latitude: number) {
   return 2 * radius * Math.tan((90 + latitude) * Math.PI / 360);
 }
-export const shackletonExtent = [-5141, -9859, -141, -4859];
-export const shackletonSourcePage = "https://data.lroc.im-ldi.com/lroc/view_rdr_product/NAC_DTM_ESALL_SR12_NACORT04_1M";
+export const globalExtent = [-180, -90, 180, 90];
+export const globalLayer = "LRO_WAC_Mosaic_Global_303ppd_v02";
 
-export function shackletonImagery() {
+/** NASA Moon Trek's global geographic pyramid has two columns and one row at level zero. */
+export function globalImagery() {
   return new XYZ({
-    url: import.meta.env.BASE_URL + "lroc/shackleton-rim/{z}/{y}/{x}.png",
-    projection,
+    url: `https://trek.nasa.gov/tiles/Moon/EQ/${globalLayer}/1.0.0/default/default028mm/{z}/{y}/{x}.jpg`,
+    projection: geographic,
     wrapX: false,
-    reprojectionErrorThreshold: 0.25,
     tileGrid: new TileGrid({
-      extent: shackletonExtent,
-      origin: [shackletonExtent[0], shackletonExtent[3]],
+      extent: globalExtent,
+      origin: [-180, 90],
       tileSize: 256,
-      resolutions: [32, 16, 8, 4, 2, 1],
+      // Geographic tile scale: δλ_z = 180° / (256 × 2ᶻ).
+      // δλ_z - Degrees per tile pixel at level z; z is dimensionless.
+      resolutions: Array.from({ length: 9 }, (_, level) => 180 / (256 * 2 ** level)),
+      sizes: Array.from({ length: 9 }, (_, level) => [2 ** (level + 1), 2 ** level]),
     }),
   });
 }

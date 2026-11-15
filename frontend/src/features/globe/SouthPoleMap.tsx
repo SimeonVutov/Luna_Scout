@@ -3,21 +3,44 @@ import Feature from "ol/Feature";
 import Map from "ol/Map";
 import View from "ol/View";
 import { Circle, Point, Polygon } from "ol/geom";
-import { fromExtent } from "ol/geom/Polygon";
+import { siteFootprint } from "./mapCoordinates";
+import ImageLayer from "ol/layer/Image";
 import TileLayer from "ol/layer/Tile";
 import VectorLayer from "ol/layer/Vector";
-import { get as getProjection } from "ol/proj";
+import { getPointResolution } from "ol/proj";
 import VectorSource from "ol/source/Vector";
 import { getRenderPixel } from "ol/render";
 import { Circle as CircleStyle, Fill, Stroke, Style } from "ol/style";
 import proj4 from "proj4";
-import type { Coordinate, Site, SiteSpec } from "../../api/types";
+import type { Coordinate, Site, SiteSpec, SunlightGrid } from "../../api/types";
+import { SunlightLegend } from "../results/SunlightLegend";
+import { sunlightOverlay } from "./sunlightOverlay";
 import { MapCompass } from "./MapCompass";
 import type { Orientation } from "./MapCompass";
-import { detailExtent, detailLayer, edge, geographic, polar, polarCoverages, polarImagery, polarRadius, shackletonExtent, shackletonImagery, shackletonSourcePage } from "./polarImagery";
+import { detailExtent, detailLayer, edge, geographic, globalExtent, globalImagery, polar, polarCoverages, polarImagery, polarRadius } from "./polarImagery";
 import "ol/ol.css";
 
-const projection = getProjection(polar)!;
+type MapMode = "south" | "global";
+
+function createView(mode: MapMode) {
+  if (mode === "global") {
+    return new View({
+      projection: geographic, center: [0, -30], resolution: 0.7,
+      minResolution: 0.00001, maxResolution: 1.4,
+      extent: globalExtent, constrainOnlyCenter: true, enableRotation: false,
+    });
+  }
+  return new View({
+    projection: polar, center: [0, 0], resolution: 2300,
+    minResolution: 0.5, maxResolution: 3600,
+    extent: [-edge, -edge, edge, edge], constrainOnlyCenter: true, enableRotation: false,
+  });
+}
+
+function isOnMap(longitude: number, latitude: number) {
+  return Number.isFinite(longitude) && Number.isFinite(latitude) &&
+    longitude >= -180 && longitude <= 180 && latitude >= -90 && latitude <= 90;
+}
 
 function coverageFeature(geometry: Circle | Polygon, color: string) {
   const edge = new Feature(geometry);
@@ -36,14 +59,19 @@ type Props = {
   onPick: (coordinate: Coordinate) => void;
   onSelect: (id: string) => void;
   cameraTarget: Site | null;
-  demoLightFraction: number | null;
+  sunlight: SunlightGrid | null;
+  showSunlight: boolean;
+  onToggleSunlight: () => void;
 };
 
 export function SouthPoleMap(props: Props) {
   const target = useRef<HTMLDivElement>(null);
   const map = useRef<Map | null>(null);
   const [source] = useState(() => new VectorSource());
+  const [overlay] = useState(() => new ImageLayer());
   const actions = useRef(props);
+  const lastCameraTarget = useRef<Site | null>(null);
+  const [mode, setMode] = useState<MapMode>("south");
   const [scale, setScale] = useState(0);
   const [orientation, setOrientation] = useState<Orientation | null>(null);
   const [tileError, setTileError] = useState(false);
@@ -51,27 +79,25 @@ export function SouthPoleMap(props: Props) {
 
   useEffect(() => {
     if (!target.current) return;
-    const base = new TileLayer({ source: polarImagery("LRO_WAC_Mosaic_SPole60_100m_v02", 6) });
+    const base = new TileLayer({
+      source: mode === "global" ? globalImagery() : polarImagery("LRO_WAC_Mosaic_SPole60_100m_v02", 6),
+    });
     const detail = new TileLayer({ extent: detailExtent, source: polarImagery(detailLayer, 12, detailExtent) });
     detail.setMaxResolution(460);
-    const shackleton = new TileLayer({ extent: shackletonExtent, source: shackletonImagery(), maxResolution: 45 });
     const coverage = new VectorLayer({ source: new VectorSource({
       features: [
-        ...polarCoverages.map(({ latitude, color }) => coverageFeature(new Circle([0, 0], polarRadius(latitude)), color)),
-        coverageFeature(fromExtent(shackletonExtent), "#d9ebf6"),
+        ...polarCoverages.map(({ latitude, color }) => coverageFeature(
+          mode === "south" ? new Circle([0, 0], polarRadius(latitude)) :
+            new Polygon([[[-180, latitude], [180, latitude], [180, -90], [-180, -90], [-180, latitude]]]),
+          color,
+        )),
       ],
     }) });
-    const view = new View({
-      projection, center: [0, 0], resolution: 2300,
-      minResolution: 0.5,
-      maxResolution: 3600,
-      extent: [-edge, -edge, edge, edge],
-      constrainOnlyCenter: true,
-      enableRotation: false,
-    });
+    const view = createView(mode);
+    const layers = mode === "south" ? [base, detail] : [base];
     const current = new Map({
       target: target.current, view,
-      layers: [base, detail, shackleton, coverage, new VectorLayer({ source })],
+      layers: [...layers, overlay, coverage, new VectorLayer({ source })],
     });
     detail.on("prerender", (event) => {
       const context = event.context as CanvasRenderingContext2D;
@@ -89,22 +115,24 @@ export function SouthPoleMap(props: Props) {
       const center = view.getCenter();
       if (!center) return;
       const [x, y] = center;
-      const [longitude, latitude] = proj4(polar, geographic, center);
-      const atPole = Math.hypot(x, y) <= Math.max(1, meters * 2);
-      setScale(meters);
-      setOrientation({ longitude, latitude, northAngle: atPole ? null : Math.atan2(x, y) * 180 / Math.PI });
+      const [longitude, latitude] = mode === "south" ? proj4(polar, geographic, center) : center;
+      const atPole = mode === "south" ? Math.hypot(x, y) <= Math.max(1, meters * 2) : Math.abs(latitude) === 90;
+      setScale(getPointResolution(view.getProjection(), meters, center, "m"));
+      setOrientation({ longitude, latitude, northAngle: atPole ? null : mode === "south" ? Math.atan2(x, y) * 180 / Math.PI : 0 });
       const blend = Math.max(0, Math.min(1, (460 - meters) / 300));
       detail.setOpacity(blend);
-      shackleton.setOpacity(Math.max(0, Math.min(1, (45 - meters) / 35)));
     }
     updateView();
+    setTileError(false);
+    base.getSource()?.on("tileloaderror", () => setTileError(true));
     detail.getSource()?.on("tileloaderror", () => setTileError(true));
     view.on(["change:resolution", "change:center"], updateView);
     current.on("singleclick", (event) => {
       const state = actions.current;
       if (state.picking) {
-        if (Math.hypot(...event.coordinate) > edge) return;
-        const [longitude_deg, latitude_deg] = proj4(polar, geographic, event.coordinate);
+        const [longitude_deg, latitude_deg] = mode === "south" ?
+          proj4(polar, geographic, event.coordinate) : event.coordinate;
+        if (!isOnMap(longitude_deg, latitude_deg)) return;
         state.onPick({ longitude_deg: Number(longitude_deg.toFixed(6)), latitude_deg: Number(latitude_deg.toFixed(6)) });
         return;
       }
@@ -112,55 +140,87 @@ export function SouthPoleMap(props: Props) {
       if (typeof id === "string") state.onSelect(id);
     });
     return () => {
+      // Sources and the result layer survive projection switches.
+      current.getLayers().clear();
       current.dispose();
       map.current = null;
     };
-  }, [source]);
+  }, [mode, overlay, source]);
 
-  const { sites, selectedId, draft, demoLightFraction, cameraTarget } = props;
+  const { sites, selectedId, draft, sunlight, showSunlight, cameraTarget } = props;
+  const selectedSite = sites.find((site) => site.id === selectedId);
+  useEffect(() => {
+    overlay.setSource(selectedSite && sunlight && showSunlight ? sunlightOverlay(selectedSite, sunlight) : null);
+  }, [overlay, selectedSite, sunlight, showSunlight]);
   useEffect(() => {
     source.clear();
     for (const site of [...sites, ...(draft ? [{ ...draft, id: null }] : [])]) {
-      const center = proj4(geographic, polar, [site.longitude_deg, site.latitude_deg]);
-      if (!center.every(Number.isFinite) || Math.hypot(...center) > edge) continue;
+      if (!isOnMap(site.longitude_deg, site.latitude_deg)) continue;
+      if (mode === "south" && site.latitude_deg > -60) continue;
+      const coordinates = [site.longitude_deg, site.latitude_deg];
+      const center = mode === "south" ? proj4(geographic, polar, coordinates) : coordinates;
       const selected = site.id === selectedId || site.id === null;
       const color = selected ? "#a2e0d4" : "#dde4ea";
-      const localScale = 2 / (1 - Math.sin(site.latitude_deg * Math.PI / 180));
-      const area = new Feature({ geometry: new Circle(center, site.radius_m * localScale), siteId: site.id });
+      const footprint = siteFootprint(site, mode === "south");
+      const area = new Feature({ geometry: footprint, siteId: site.id });
       const marker = new Feature({ geometry: new Point(center), siteId: site.id });
       area.setStyle(new Style({
         stroke: new Stroke({ color, width: selected ? 2 : 1 }),
-        fill: new Fill({ color: `rgba(162,224,212,${selected ? 0.12 + 0.3 * (demoLightFraction ?? 0) : 0.08})` }),
+        fill: new Fill({ color: selected && sunlight && showSunlight ? "transparent" : "rgba(162,224,212,0.08)" }),
       }));
       marker.setStyle(new Style({ image: new CircleStyle({
         radius: selected ? 5 : 4, fill: new Fill({ color }), stroke: new Stroke({ color: "#111", width: 1 }),
       }) }));
       source.addFeatures([area, marker]);
     }
-  }, [source, sites, selectedId, draft, demoLightFraction]);
+  }, [mode, source, sites, selectedId, draft, sunlight, showSunlight]);
 
   useEffect(() => {
-    if (!cameraTarget) return;
-    const center = proj4(geographic, polar, [cameraTarget.longitude_deg, cameraTarget.latitude_deg]);
-    if (!center.every(Number.isFinite) || Math.hypot(...center) > edge) return;
-    map.current?.getView().animate({ center, resolution: Math.max(0.5, cameraTarget.radius_m / 95), duration: 350 });
-  }, [cameraTarget]);
+    if (!cameraTarget || cameraTarget === lastCameraTarget.current) return;
+    if (mode === "south" && cameraTarget.latitude_deg > -60) {
+      setMode("global");
+      return;
+    }
+    const coordinates = [cameraTarget.longitude_deg, cameraTarget.latitude_deg];
+    if (!isOnMap(cameraTarget.longitude_deg, cameraTarget.latitude_deg)) return;
+    const center = mode === "south" ? proj4(geographic, polar, coordinates) : coordinates;
+    const view = map.current?.getView();
+    if (!view) return;
+    // Pixel scale conversion: δ = m / k.
+    // δ - View units per pixel; m - Desired metres per pixel; k - Metres per view unit.
+    const metresPerUnit = getPointResolution(view.getProjection(), 1, center, "m");
+    const resolution = Math.max(0.5, cameraTarget.radius_m / 95) / metresPerUnit;
+    lastCameraTarget.current = cameraTarget;
+    view.animate({ center, resolution, duration: 350 });
+  }, [mode, cameraTarget]);
 
-  return <section className={props.picking ? "viewport polar-map picking" : "viewport polar-map"} aria-label="Lunar south-polar map">
+  return <section className={props.picking ? "viewport polar-map picking" : "viewport polar-map"} aria-label={mode === "south" ? "Lunar south-polar map" : "Whole Moon map"}>
     <div className="map-mount" ref={target} />
-    <div className="viewport-label">South pole · {scale.toLocaleString(undefined, { maximumFractionDigits: 2 })} m / screen px</div>
+    <div className="viewport-label">{mode === "south" ? "South pole" : "Whole Moon"} · {scale.toLocaleString(undefined, { maximumFractionDigits: 2 })} m / screen px</div>
     <MapCompass orientation={orientation} />
+    {sunlight && !props.picking && <div className="map-simulation-key">
+      <button className="button secondary" type="button" aria-pressed={showSunlight} onClick={props.onToggleSunlight}>
+        Solar visibility
+      </button>
+      {showSunlight && <SunlightLegend />}
+    </div>}
     <div className="coverage-key" aria-label="Imagery coverage">
       {polarCoverages.map(({ label, color }) => <span key={label} style={{ color }}>{label}</span>)}
-      <span style={{ color: "#d9ebf6" }}>Shackleton · 1 m imagery</span>
+      <span>{mode === "global" ? "Global WAC · approximately 100 m source detail" : "Polar NAC · 1 m source, ≈4 m tiles"}</span>
     </div>
     {props.picking && <p className="map-instruction">Click the map to place the site center</p>}
     {tileError && <p className="map-note" role="status">Some NASA imagery tiles could not load.</p>}
-    <button type="button" className="button secondary pole-button" onClick={() =>
-      map.current?.getView().animate({ center: [0, 0], resolution: 2300, duration: 350 })
-    }>South pole</button>
+    <div className="map-navigation" role="group" aria-label="Map coverage">
+      <button type="button" className="button secondary" aria-pressed={mode === "global"} onClick={() => {
+        if (mode === "global") map.current?.getView().fit(globalExtent, { padding: [40, 40, 40, 40], duration: 350 });
+        else setMode("global");
+      }}>Whole Moon</button>
+      <button type="button" className="button secondary" aria-pressed={mode === "south"} onClick={() => {
+        if (mode === "south") map.current?.getView().animate({ center: [0, 0], resolution: 2300, duration: 350 });
+        else setMode("south");
+      }}>South pole</button>
+    </div>
     <div className="map-credits">
-      <a className="map-credit" href={shackletonSourcePage} target="_blank" rel="noreferrer">Shackleton Rim · 1 m LROC</a>
       <a className="map-credit" href="https://trek.nasa.gov/moon/" target="_blank" rel="noreferrer">NASA Moon Trek · LROC WAC / NAC</a>
     </div>
   </section>;
