@@ -41,6 +41,13 @@ The 5 m sites are Connecting Ridge (`Site01`), Shackleton Rim (`Site04`), Nobile
 - **Receivers.** The default is a vertical panel that turns toward the Sun, 2 m above the ground, as on real polar landers. At Shackleton it collects about 24 kWh/m² per day, compared with 13 on the ground and 0.7 on a horizontal plate.
 - Two "lit" definitions are reported: any part of the Sun visible, and at least half of the disk visible.
 
+### Terrain detail, slope and the skyline
+
+- **Detail is reported, not assumed.** The solver runs anywhere from 60°S to 90°S, but the terrain under a site is 5 m only inside the ten grids, 80 m inside 80°S and 240 m beyond. Each site reports the share of its area from each source, and a site on coarse terrain is flagged as approximate.
+- **Slope** is a central difference of terrain height between grid neighbours, over a baseline of twice the grid spacing (40 m at the default 20 m grid). It is a smoothed slope, gentler than the 5 m posting would give. At Shackleton the mean is 32.7°, close to the 31.5° read directly from NASA's 5 m grid at the centre.
+- **Lit and gentle** counts a point when at least half the Sun is visible and its slope is at most 10°, the limit used in NASA-supported landing-site studies. Missing data widens the upper bound.
+- **Skyline** is the exact terrain horizon from the site centre in 3,600 directions (0.1°), at the panel height and at the mast height, from the same triangulated terrain as the ray tracer. It does not depend on time, so the browser draws the Sun and Earth against it as the timeline moves. The visible share of a disk comes from the geometry, not from sampled rays.
+
 ### Earth visibility
 
 - A ray from a mast at the site centre to Earth's centre decides whether Earth is visible. 37 rays across Earth's disk give the visible fraction.

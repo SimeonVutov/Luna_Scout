@@ -13,12 +13,16 @@ LunaScout is our project for the 2026 NASA Space Apps Challenge *Lunar Landing S
 
 ## Features
 
-- **Site catalogue.** NASA reference sites, or click anywhere from 60°S to 90°S to add your own.
+- **Site catalogue.** 15 NASA reference sites (Artemis III regions, Lunar Surface Data Book sites, IM-2), or click anywhere from 60°S to 90°S to add your own.
 - **Time playback.** Scrub a shared UTC timeline. Snapshots appear as soon as they are computed.
 - **Sunlight map.** Each grid box is classified as fully lit, partly lit, dark or unresolved, using 37 rays across the Sun's disk.
 - **Power estimate.** Direct irradiance and energy (kWh/m²) on a vertical Sun-facing panel, on the ground, or on a horizontal plate.
 - **Earth visibility.** Line of sight from a mast at the site centre, including how much of Earth's disk is visible.
 - **Exact events.** Sunset, sunrise, Earthset and Earthrise at the site centre to about one second, plus the longest darkness.
+- **Terrain insight.** For every site: how fine the elevation data is (5 m, 80 m or 240 m, with a warning when coarse), slope statistics, and the share of ground at or below 5°, 10° and 15°.
+- **Lit and gentle.** The share of the site that is both in sunlight and on ground no steeper than 10°, updated with the timeline.
+- **Skyline close-up.** The Sun and Earth drawn against the real terrain horizon from the site centre, at true angular scale, with the visible share of their disks.
+- **Map layers.** Solar visibility, slope, and the footprints of NASA's 5 m terrain grids, so you can see where results are most trustworthy.
 - **3D terrain.** A local relief view built from the same LOLA data the solver uses.
 - **Comparison.** Run two sites with the same settings and the same playhead.
 
