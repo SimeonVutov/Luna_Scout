@@ -1,5 +1,6 @@
-import type { Reading, RunStatus, Visibility } from "../../api/types";
+import type { Reading, RunStatus, SiteInsight, Visibility } from "../../api/types";
 import { bound, countdown, decimal, earthLabel, energy, longestLabel, ratio, sunLabel, windowTime } from "./format";
+import { detailLabel, terrainQuality } from "./TerrainSection";
 
 const receiverNoun = { vertical_tracking: "vertical panel", terrain: "ground", horizontal: "flat plate", fixed: "receiver" } as const;
 
@@ -31,6 +32,7 @@ export function SelectedTimeMetrics({ reading, run, at }: { reading: Reading; ru
   return <dl className="metrics">
     <div><dt>Lit area · any Sun</dt><dd>{bound(summary.lit_area_fraction, ratio)}</dd></div>
     <div><dt>Lit area · ≥ half the Sun</dt><dd>{bound(summary.half_disk_lit_area_fraction, ratio)}</dd></div>
+    <div><dt>Lit and gentle (≤ 10°)</dt><dd>{bound(summary.usable_area_fraction, ratio)}</dd></div>
     <div><dt>Irradiance on {receiverLabel(run)}</dt><dd>{bound(summary.mean_irradiance_on_known_ground_w_m2, decimal, " W/m²")}</dd></div>
     <div><dt>Sun at centre</dt><dd className={states.sunState === "clear" ? "visible-value" : ""}>{states.sun}</dd></div>
     <div><dt>Earth at {run?.plan.settings?.mast_height_m ?? 2} m mast</dt><dd className={states.earthState === "clear" ? "visible-value" : ""}>{states.earth}</dd></div>
@@ -42,21 +44,23 @@ export function SelectedTimeMetrics({ reading, run, at }: { reading: Reading; ru
 }
 
 /** Headline numbers for one site, laid out as tiles for the compare panes. */
-export function StatTiles({ reading, run, at }: { reading: Reading | null; run: RunStatus | null; at: Date }) {
+export function StatTiles({ reading, run, at, insight }: { reading: Reading | null; run: RunStatus | null; at: Date; insight?: SiteInsight | null }) {
   if (!reading) return <p className="result-note" role="status">{run ? "Waiting for this snapshot…" : "Run the simulation to calculate this snapshot."}</p>;
 
   const states = bodyStates(reading, run, at);
   const summary = reading.summary;
-  const tiles: { label: string; value: string; tone?: "good" }[] = [
+  const tiles: { label: string; value: string; tone?: "good" | "warn" }[] = [
     { label: "Lit · any Sun", value: bound(summary.lit_area_fraction, ratio) },
     { label: "Lit · ≥ half Sun", value: bound(summary.half_disk_lit_area_fraction, ratio) },
+    { label: "Lit and ≤ 10°", value: bound(summary.usable_area_fraction, ratio) },
     { label: `On ${receiverLabel(run)}`, value: bound(summary.mean_irradiance_on_known_ground_w_m2, decimal, " W/m²") },
     { label: "Sun at centre", value: states.sun, tone: states.sunState === "clear" ? "good" : undefined },
     { label: "Earth at mast", value: states.earth, tone: states.earthState === "clear" ? "good" : undefined },
     { label: "Earth disk", value: bound(reading.earth_disk_visible_fraction, ratio) },
+    ...(insight ? [{ label: "Terrain", value: detailLabel(insight.summary), tone: terrainQuality(insight.summary) === "fine" ? undefined : "warn" as const }] : []),
   ];
   return <dl className="stat-tiles">
-    {tiles.map((tile) => <div key={tile.label}><dt>{tile.label}</dt><dd className={tile.tone === "good" ? "visible-value" : ""}>{tile.value}</dd></div>)}
+    {tiles.map((tile) => <div key={tile.label}><dt>{tile.label}</dt><dd className={tile.tone === "good" ? "visible-value" : tile.tone === "warn" ? "warn-value" : ""}>{tile.value}</dd></div>)}
   </dl>;
 }
 

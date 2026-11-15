@@ -11,15 +11,18 @@ import { getPointResolution } from "ol/proj";
 import VectorSource from "ol/source/Vector";
 import { Circle as CircleStyle, Fill, Stroke, Style } from "ol/style";
 import proj4 from "proj4";
-import type { Coordinate, Site, SiteSpec, SunlightGrid } from "../../api/types";
+import type { Coordinate, Site, SiteSpec, SlopeGrid, SunlightGrid } from "../../api/types";
+import { SlopeLegend } from "../results/SlopeLegend";
 import { SunlightLegend } from "../results/SunlightLegend";
-import { sunlightOverlay } from "./sunlightOverlay";
+import { slopeOverlay, sunlightOverlay } from "./sunlightOverlay";
+import { coverageFeatures } from "./terrainCoverage";
 import { MapCompass } from "./MapCompass";
 import type { Orientation } from "./MapCompass";
 import { detailExtent, detailLayer, edge, geographic, globalExtent, globalImagery, polar, polarImagery } from "./polarImagery";
 import "ol/ol.css";
 
 type MapMode = "south" | "global";
+export type MapLayer = "sunlight" | "slope" | "none";
 
 function createView(mode: MapMode) {
   if (mode === "global") {
@@ -50,8 +53,9 @@ type Props = {
   onSelect: (id: string) => void;
   cameraTarget: Site | null;
   sunlight: SunlightGrid | null;
-  showSunlight: boolean;
-  onToggleSunlight: () => void;
+  slope: SlopeGrid | null;
+  layer: MapLayer;
+  onLayerChange: (layer: MapLayer) => void;
 };
 
 export function SouthPoleMap(props: Props) {
@@ -59,6 +63,8 @@ export function SouthPoleMap(props: Props) {
   const map = useRef<Map | null>(null);
   const [source] = useState(() => new VectorSource());
   const [overlay] = useState(() => new ImageLayer());
+  const [coverage] = useState(() => new VectorLayer({ source: new VectorSource({ features: coverageFeatures() }), visible: false }));
+  const [showCoverage, setShowCoverage] = useState(false);
   const actions = useRef(props);
   const lastCameraTarget = useRef<Site | null>(null);
   const [mode, setMode] = useState<MapMode>("south");
@@ -78,7 +84,7 @@ export function SouthPoleMap(props: Props) {
     const layers = mode === "south" ? [base, detail] : [base];
     const current = new Map({
       target: target.current, view,
-      layers: [...layers, overlay, new VectorLayer({ source })],
+      layers: [...layers, overlay, ...(mode === "south" ? [coverage] : []), new VectorLayer({ source })],
     });
     map.current = current;
     function updateView() {
@@ -116,13 +122,18 @@ export function SouthPoleMap(props: Props) {
       current.dispose();
       map.current = null;
     };
-  }, [mode, overlay, source]);
+  }, [mode, overlay, coverage, source]);
 
-  const { sites, selectedId, draft, sunlight, showSunlight, cameraTarget } = props;
+  const { sites, selectedId, draft, sunlight, slope, layer, cameraTarget } = props;
   const selectedSite = sites.find((site) => site.id === selectedId);
+  const overlayShown = layer === "sunlight" ? sunlight !== null : layer === "slope" ? slope !== null : false;
+  useEffect(() => { coverage.setVisible(showCoverage); }, [coverage, showCoverage]);
   useEffect(() => {
-    overlay.setSource(selectedSite && sunlight && showSunlight ? sunlightOverlay(selectedSite, sunlight) : null);
-  }, [overlay, selectedSite, sunlight, showSunlight]);
+    let image = null;
+    if (selectedSite && layer === "sunlight" && sunlight) image = sunlightOverlay(selectedSite, sunlight);
+    if (selectedSite && layer === "slope" && slope) image = slopeOverlay(selectedSite, slope);
+    overlay.setSource(image);
+  }, [overlay, selectedSite, sunlight, slope, layer]);
   useEffect(() => {
     source.clear();
     for (const site of [...sites, ...(draft ? [{ ...draft, id: null }] : [])]) {
@@ -137,14 +148,14 @@ export function SouthPoleMap(props: Props) {
       const marker = new Feature({ geometry: new Point(center), siteId: site.id });
       area.setStyle(new Style({
         stroke: new Stroke({ color, width: selected ? 2 : 1 }),
-        fill: new Fill({ color: selected && sunlight && showSunlight ? "transparent" : "rgba(162,224,212,0.08)" }),
+        fill: new Fill({ color: selected && overlayShown ? "transparent" : "rgba(162,224,212,0.08)" }),
       }));
       marker.setStyle(new Style({ image: new CircleStyle({
         radius: selected ? 5 : 4, fill: new Fill({ color }), stroke: new Stroke({ color: "#111", width: 1 }),
       }) }));
       source.addFeatures([area, marker]);
     }
-  }, [mode, source, sites, selectedId, draft, sunlight, showSunlight]);
+  }, [mode, source, sites, selectedId, draft, overlayShown]);
 
   useEffect(() => {
     if (!cameraTarget || cameraTarget === lastCameraTarget.current) return;
@@ -169,11 +180,25 @@ export function SouthPoleMap(props: Props) {
     <div className="map-mount" ref={target} />
     <div className="viewport-label">{mode === "south" ? "South pole" : "Whole Moon"} · {scale.toLocaleString(undefined, { maximumFractionDigits: 2 })} m / screen px</div>
     <MapCompass orientation={orientation} />
-    {sunlight && !props.picking && <div className="map-simulation-key">
-      <button className="button secondary" type="button" aria-pressed={showSunlight} onClick={props.onToggleSunlight}>
-        Solar visibility
-      </button>
-      {showSunlight && <SunlightLegend />}
+    {!props.picking && (sunlight || slope || mode === "south") && <div className="map-simulation-key">
+      <div className="layer-buttons" role="group" aria-label="Map layers">
+        {sunlight && <button className="button secondary" type="button" aria-pressed={layer === "sunlight"} onClick={() => props.onLayerChange(layer === "sunlight" ? "none" : "sunlight")}>
+          Solar visibility
+        </button>}
+        {slope && <button className="button secondary" type="button" aria-pressed={layer === "slope"} onClick={() => props.onLayerChange(layer === "slope" ? "none" : "slope")}>
+          Slope
+        </button>}
+        {mode === "south" && <button className="button secondary" type="button" aria-pressed={showCoverage} onClick={() => setShowCoverage(!showCoverage)}>
+          Terrain data
+        </button>}
+      </div>
+      {layer === "sunlight" && sunlight && <SunlightLegend />}
+      {layer === "slope" && slope && <SlopeLegend />}
+      {showCoverage && mode === "south" && <div className="sunlight-legend" aria-label="Terrain data legend">
+        <span><i style={{ background: "#e4c48c" }} />5 m grids (ten sites)</span>
+        <span><i className="ring" />80 m inside 80°S</span>
+        <span>240 m out to 60°S</span>
+      </div>}
     </div>}
     {props.picking && <p className="map-instruction">Click the map to place the site center</p>}
     {tileError && <p className="map-note" role="status">Some NASA imagery tiles could not load.</p>}

@@ -352,3 +352,33 @@ h1, h2, h3, h4, p { margin: 0; }
   .strips { --lead: 92px; }
   .stat-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.sky-closeup { margin: 10px 0 0; }
+.sky-closeup svg { display: block; width: 100%; height: auto; border: 1px solid var(--edge); border-radius: 6px; }
+.sky-closeup figcaption { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: .72rem; }
+.sky-closeup figcaption strong { font-weight: 640; }
+.sky-closeup figcaption span { font-variant-numeric: tabular-nums; }
+.sky-closeup figcaption small { color: var(--muted); font-size: .66rem; margin-left: auto; }
+.sky-closeup.empty { color: var(--muted); }
+.sky-closeup .level-line { stroke: #34506b; stroke-width: 1; stroke-dasharray: 3 3; }
+.sky-closeup .skyline-fill { fill: #55606c; }
+.sky-closeup .skyline-edge { stroke: #c3cbd4; stroke-width: 1.2; }
+.sky-closeup .scale-note { fill: #8b96a3; font-size: 7px; font-family: inherit; }
+.quality.fine { color: var(--accent); }
+.quality.regional, .warn-value { color: #f0c878; }
+.quality.coarse { color: #f2a08f; }
+.quality-note.coarse { color: #f2a08f; }
+.pane-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 230px); gap: 12px; align-items: start; }
+.pane-sky { display: grid; gap: 6px; min-width: 0; }
+.pane-sky .sky-closeup { margin: 0; }
+.pane-sky .segmented.compact { justify-self: start; }
+.pane-sky .sky-closeup.compact svg { max-height: 100px; }
+.pane-sky .sky-closeup.compact figcaption small { display: none; }
+@media (max-width: 1200px) { .pane-body { grid-template-columns: minmax(0, 1fr); } }
+
+.layer-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.layer-buttons .button[aria-pressed="true"] { background: #273b3a; color: var(--accent); border-color: #3c5753; }
+.sunlight-legend i.ring { background: transparent; border: 1.5px dashed #9aa7b4; border-radius: 50%; }
+.sky-closeup .hidden-note { fill: #e9eeef; font-size: 10px; font-weight: 600; font-family: inherit; }
+.sky-closeup .hidden-detail { fill: #c3cbd4; font-size: 8.5px; font-family: inherit; }
+.compare-picker .reference-sites h3 { font-size: .73rem; color: var(--muted); font-weight: 580; margin-bottom: 6px; }

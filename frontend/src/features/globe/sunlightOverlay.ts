@@ -1,13 +1,34 @@
 import { register } from "ol/proj/proj4";
 import Static from "ol/source/ImageStatic";
 import proj4 from "proj4";
-import type { Site, SunlightGrid } from "../../api/types";
+import type { Site, SlopeGrid, SunlightGrid } from "../../api/types";
+import { slopeClass } from "../results/slopeColors";
 import { sunlightClass, sunlightColors } from "../results/sunlightColors";
 
 export const MOON_RADIUS_M = 1_737_400;
 
+type Paint = (index: number) => readonly [number, number, number, number] | null;
+
 export function sunlightOverlay(site: Site, grid: SunlightGrid) {
-  const offsets = grid.offsets_m;
+  return gridOverlay(site, grid.offsets_m, (index) => {
+    const category = sunlightClass(grid, index);
+    if (!category) return null;
+    const [red, green, blue] = sunlightColors[category];
+    return [red, green, blue, category === "shadow" ? 126 : 149];
+  });
+}
+
+export function slopeOverlay(site: Site, grid: SlopeGrid) {
+  return gridOverlay(site, grid.offsets_m, (index) => {
+    const slope = grid.slope_deg[index];
+    if (!grid.inside_site[index] || slope === null) return null;
+    const [red, green, blue] = slopeClass(slope).color;
+    return [red, green, blue, 165];
+  });
+}
+
+/** Paint one image pixel per reporting point, clipped to the site circle, on the lunar map. */
+function gridOverlay(site: Site, offsets: number[], paint: Paint) {
   const size = offsets.length;
   const spacing = size > 1 ? offsets[1] - offsets[0] : 2 * site.radius_m;
   const canvas = document.createElement("canvas");
@@ -18,11 +39,9 @@ export function sunlightOverlay(site: Site, grid: SunlightGrid) {
   const image = context.createImageData(size, size);
   for (let row = 0; row < size; row++) {
     for (let column = 0; column < size; column++) {
-      const category = sunlightClass(grid, row * size + column);
-      if (!category) continue;
-      const rgba = ((size - 1 - row) * size + column) * 4;
-      const [red, green, blue] = sunlightColors[category];
-      image.data.set([red, green, blue, category === "shadow" ? 126 : 149], rgba);
+      const color = paint(row * size + column);
+      if (!color) continue;
+      image.data.set(color, ((size - 1 - row) * size + column) * 4);
     }
   }
   context.putImageData(image, 0, 0);

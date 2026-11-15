@@ -1,8 +1,10 @@
-import type { Reading, RunStatus, SimulationOptions, Site, TimeRange } from "../../api/types";
+import type { Reading, RunStatus, SimulationOptions, Site, SiteInsight, TimeRange } from "../../api/types";
 import { coordinatesLabel } from "../sites/referenceSites";
 import { clockLabel, dateLabel } from "../timeline/time";
 import { decimal } from "./format";
 import { SkyChart } from "./SkyChart";
+import { SkyCloseUp } from "./SkyCloseUp";
+import { TerrainSection } from "./TerrainSection";
 import { PeriodMetricsList, SelectedTimeMetrics } from "./SiteMetrics";
 import { isActive } from "./useScience";
 
@@ -19,6 +21,9 @@ type PanelProps = {
   reconnecting: boolean;
   priorityError: string | null;
   options: SimulationOptions;
+  insight: SiteInsight | null;
+  insightLoading: boolean;
+  insightError: string | null;
   onRun: () => void;
   onOpenSettings: () => void;
   canStart: boolean;
@@ -64,6 +69,18 @@ export function ResultsPanel(props: PanelProps) {
         {props.frameError ? <p className="result-note error-text" role="alert">{props.frameError}</p> : reading ? <SelectedTimeMetrics reading={reading} run={run} at={at} /> : <p className="result-note" role="status">
           {run?.ready_indices.includes(index) ? "Loading snapshot…" : run ? "Waiting for this snapshot." : "Run the simulation to calculate this snapshot."}
         </p>}
+      </section>
+
+      <section className="result-section">
+        <h4>At the skyline</h4>
+        <p className="result-note">The Sun and Earth against the real terrain horizon from the site centre.</p>
+        <SkyCloseUp label="Sun" view={reading?.sun_at_collector} skyline={props.insight?.collector_skyline_deg} step={props.insight?.skyline_azimuth_step_deg ?? 0.1} />
+        <SkyCloseUp label="Earth" view={reading?.earth_at_mast} skyline={props.insight?.mast_skyline_deg} step={props.insight?.skyline_azimuth_step_deg ?? 0.1} />
+      </section>
+
+      <section className="result-section">
+        <h4>Terrain</h4>
+        <TerrainSection insight={props.insight} loading={props.insightLoading} error={props.insightError} />
       </section>
 
       <SkyChart samples={series} at={at} range={range} />

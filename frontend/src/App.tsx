@@ -1,8 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { SouthPoleMap } from "./features/globe/SouthPoleMap";
+import type { MapLayer } from "./features/globe/SouthPoleMap";
 import type { Coordinate, RunStatus, Site, SiteSpec, TimeRange } from "./api/types";
 import { Icon } from "./Icon";
 import { defaultOptions, isActive, useRunOutput, useRunSeries, useScience } from "./features/results/useScience";
+import { useSiteInsight } from "./features/results/useSiteInsight";
 import { ResultsPanel } from "./features/results/ResultsPanel";
 import { siteCatalog, usesApiCatalog } from "./features/sites/siteCatalog";
 import { SitePanel } from "./features/sites/SitePanel";
@@ -47,7 +49,8 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [terrainMode, setTerrainMode] = useState(false);
   const [visitedTerrain, setVisitedTerrain] = useState<string | null>(null);
-  const [showSunlight, setShowSunlight] = useState(true);
+  const [mapLayer, setMapLayer] = useState<MapLayer>("sunlight");
+  const showSunlight = mapLayer === "sunlight";
   const [busy, setBusy] = useState(false);
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +85,10 @@ export function App() {
   const compareOutputs = { a: compareOutputA, b: compareOutputB };
   const compareSeriesA = useRunSeries(exploring ? null : compareRuns.a);
   const compareSeriesB = useRunSeries(exploring ? null : compareRuns.b);
+
+  const selectedInsight = useSiteInsight(exploring ? selected : null, options);
+  const insightA = useSiteInsight(exploring ? null : chosen.a, options);
+  const insightB = useSiteInsight(exploring ? null : chosen.b, options);
 
   const selectedRun = science.status(selected);
   const selectedOutput = useRunOutput(exploring ? selectedRun : null, timeIndex);
@@ -256,21 +263,21 @@ export function App() {
           a: { site: chosen.a, run: compareRuns.a, series: compareSeriesA },
           b: { site: chosen.b, run: compareRuns.b, series: compareSeriesB },
         }} />}
-        {!exploring && compareView === "live" && <CompareLive at={instant} showSunlight={showSunlight} onToggleSunlight={() => setShowSunlight((value) => !value)}
+        {!exploring && compareView === "live" && <CompareLive at={instant} layer={mapLayer} onLayerChange={setMapLayer}
           panes={{
-            a: { site: chosen.a, run: compareRuns.a, reading: compareOutputs.a.frame?.reading ?? null, sunlight: compareOutputs.a.frame?.grid ?? null },
-            b: { site: chosen.b, run: compareRuns.b, reading: compareOutputs.b.frame?.reading ?? null, sunlight: compareOutputs.b.frame?.grid ?? null },
+            a: { site: chosen.a, run: compareRuns.a, reading: compareOutputs.a.frame?.reading ?? null, sunlight: compareOutputs.a.frame?.grid ?? null, insight: insightA.insight },
+            b: { site: chosen.b, run: compareRuns.b, reading: compareOutputs.b.frame?.reading ?? null, sunlight: compareOutputs.b.frame?.grid ?? null, insight: insightB.insight },
           }} />}
         <div className="viewport-stage" hidden={!exploring}>
           <div className="stage-view" hidden={showTerrain}>
             <SouthPoleMap sites={sites} selectedId={selectedId} draft={activeDraft} picking={draft !== null}
               onPick={pick} onSelect={selectSite} cameraTarget={cameraTarget} sunlight={sunlight}
-              showSunlight={showSunlight} onToggleSunlight={() => setShowSunlight((value) => !value)} />
+              slope={selectedInsight.insight?.slope_grid ?? null} layer={mapLayer} onLayerChange={setMapLayer} />
           </div>
           {selected && (showTerrain || terrainKey === visitedTerrain) && <div className="stage-view" hidden={!showTerrain}>
             <Suspense fallback={<div className="terrain-status" role="status">Opening 3D terrain…</div>}>
               <TerrainView key={terrainKey} site={selected}
-                sunlight={sunlight} showSunlight={showSunlight} onToggleSunlight={() => setShowSunlight((value) => !value)} />
+                sunlight={sunlight} showSunlight={showSunlight} onToggleSunlight={() => setMapLayer(showSunlight ? "none" : "sunlight")} />
             </Suspense>
           </div>}
         </div>
@@ -278,7 +285,8 @@ export function App() {
           run={selectedRun} reading={selectedOutput.frame?.reading ?? null} series={series} frameError={selectedOutput.error}
           submitting={submittedSites.some(science.submitting)} reconnecting={science.reconnecting}
           priorityError={science.priorityError}
-          options={options} onRun={() => void startRuns()} onOpenSettings={() => setSettingsOpen(true)}
+          options={options} insight={selectedInsight.insight} insightLoading={selectedInsight.loading} insightError={selectedInsight.error}
+          onRun={() => void startRuns()} onOpenSettings={() => setSettingsOpen(true)}
           canStart={runnableSites.length > 0} />}
       </div>
       <Timeline range={range} index={timeIndex} onIndex={setTimeIndex} onRange={changeRange} tracks={tracks} />
