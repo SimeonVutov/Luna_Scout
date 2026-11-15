@@ -67,7 +67,7 @@ Open the URL Vite prints (usually <http://localhost:5173>). The API documentatio
 
 The first run at a new site builds a terrain horizon map, which takes about 40–70 s. Later runs and date changes at that site reuse it.
 
-**One timeline for every site.** Changing the date range starts a simulation for all your saved sites at once. Only the missing times are computed, because results already stored for the same site and settings are reused. Narrowing the range is instant and deletes nothing. Long ranges are limited by how fast JPL Horizons answers (a year at 15 minute sampling is about 70,000 requests' worth of positions), so choose a coarser **Sample every** in Settings for ranges longer than a few months.
+**One timeline for every site.** Changing the date range starts a simulation for all your saved sites at once. Only the missing times are computed, because results already stored for the same site and settings are reused. Narrowing the range is instant and deletes nothing. Long ranges are limited by how fast JPL Horizons answers (a year at 15 minute sampling needs about 2,200 requests, and they must be sent one at a time), so choose a coarser **Sample every** in Settings for ranges longer than a few months.
 
 **Activity menu.** Next to Settings, it shows whether the worker and API are running, what the worker is doing, and every recent simulation with its progress. It fetches the current state when the page opens. Each site card also shows a live progress bar and "Simulation done".
 
