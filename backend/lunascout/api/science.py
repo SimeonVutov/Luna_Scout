@@ -19,7 +19,6 @@ from ..simulation.engine import SimulationSettings
 from ..simulation.frames import SiteFootprint
 from ..terrain.horizon import purge_horizons, site_label
 from ..terrain.model import TerrainError
-from ..terrain.preview import PreviewScale, TerrainPreview, sample_preview
 from . import site_store
 from .insight import InsightService, SiteInsight
 from .models import RunPriority, RunSpec, SiteSpec
@@ -37,6 +36,9 @@ class GridPayload(BaseModel):
     visible_sun_fraction_upper: list[float | None]
     irradiance_lower_w_m2: list[float | None]
     irradiance_upper_w_m2: list[float | None]
+    # Fraction of Earth's disk in line of sight from mast height; absent from older snapshots.
+    earth_visible_fraction_lower: list[float | None] | None = None
+    earth_visible_fraction_upper: list[float | None] | None = None
 
 
 class PurgeResult(BaseModel):
@@ -180,26 +182,13 @@ def science_router(data_dir: Path, queue: RunQueue) -> APIRouter:
                     visible_sun_fraction_upper=_nullable(grid["visible_sun_fraction_upper"]),
                     irradiance_lower_w_m2=_nullable(grid["irradiance_lower_w_m2"]),
                     irradiance_upper_w_m2=_nullable(grid["irradiance_upper_w_m2"]),
+                    earth_visible_fraction_lower=_optional(grid, "earth_visible_fraction_lower"),
+                    earth_visible_fraction_upper=_optional(grid, "earth_visible_fraction_upper"),
                 )
         except (OSError, ValueError, KeyError) as exc:
             logger.exception("Could not read a published snapshot of run %s", run_id)
             raise HTTPException(500, "The saved snapshot could not be read.") from exc
         return FramePayload(reading=reading, grid=payload)
-
-    @router.post("/terrain/preview")
-    def terrain_preview(spec: SiteSpec, scale: PreviewScale = "site") -> TerrainPreview:
-        try:
-            site = SiteFootprint(spec.latitude_deg, spec.longitude_deg, spec.radius_m)
-            return sample_preview(data_dir, site, scale)
-        except ValueError as exc:
-            raise HTTPException(422, str(exc)) from exc
-        except TerrainError as exc:
-            logger.warning("Terrain preview unavailable: %s", exc)
-            if str(exc).startswith("Missing regional LOLA"):
-                raise HTTPException(
-                    503, "Download the terrain with lunascout-science fetch-data."
-                ) from exc
-            raise HTTPException(422, str(exc)) from exc
 
     @router.post("/terrain/insight")
     def terrain_insight(
@@ -228,6 +217,10 @@ def science_router(data_dir: Path, queue: RunQueue) -> APIRouter:
             raise HTTPException(422, str(exc)) from exc
 
     return router
+
+
+def _optional(grid, name: str) -> list[float | None] | None:
+    return _nullable(grid[name]) if name in grid.files else None
 
 
 def _nullable(array: np.ndarray) -> list[float | None]:

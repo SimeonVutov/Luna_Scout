@@ -115,6 +115,41 @@ def direct_sunlight(
     return fractions_lower, fractions_upper, irradiance_lower, irradiance_upper
 
 
+def earth_visibility(
+    terrain: Terrain,
+    origins_m: FloatArray,
+    earth_m: FloatArray,
+    disk_samples: int,
+    horizons: HorizonMap | None = None,
+) -> tuple[FloatArray, FloatArray]:
+    """Lower and upper bounds on the visible fraction of Earth's disk at each origin.
+
+    `earth_m` is Earth's Moon-fixed position in metres. Earth's apparent disk is sampled
+    with equal-solid-angle rays like the Sun's. Only terrain blocks it; this is geometric
+    line of sight, not a radio link budget. With `horizons`, which must have been built for
+    exactly these origins, rays are classified from the terrain horizon.
+    """
+    fractions_lower = np.empty(len(origins_m))
+    fractions_upper = np.empty(len(origins_m))
+    batch_size = max(1, _RAYS_PER_BATCH // disk_samples)
+    for start in range(0, len(origins_m), batch_size):
+        batch = slice(start, start + batch_size)
+        origins = origins_m[batch]
+        disk = disk_directions(earth_m[None, :] - origins, EARTH_MEAN_RADIUS_M, disk_samples)
+        if horizons is None:
+            visibility = terrain.trace_rays(origins, disk.directions)
+        else:
+            visibility = ray_visibility(terrain, horizons, batch, origins, disk.directions)
+
+        # Equal-weight disk visibility: f₋ = Σⱼ[clearⱼ]/N; f₊ = Σⱼ[not blockedⱼ]/N
+        #   f₋, f₊ - Dimensionless visible-disk bounds; unresolved rays count only in f₊.
+        #   N (disk_samples) - Equal-solid-angle rays across Earth's apparent disk.
+        fractions_lower[batch] = (visibility == mesh.CLEAR).mean(axis=1)
+        fractions_upper[batch] = (visibility != mesh.BLOCKED).mean(axis=1)
+
+    return fractions_lower, fractions_upper
+
+
 def disk_directions(
     target_vectors_m: FloatArray, body_radius_m: float, sample_count: int
 ) -> DiskSamples:

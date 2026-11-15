@@ -31,7 +31,13 @@ from ..simulation.engine import (
 )
 from ..simulation.events import centre_windows
 from ..simulation.frames import SiteFootprint
-from ..terrain.horizon import HorizonMap, load_or_build_horizons, read_cached_horizons, site_label
+from ..simulation.rays import site_ray_arrays
+from ..terrain.horizon import (
+    HorizonMap,
+    load_or_build_horizons,
+    read_cached_horizons,
+    site_label,
+)
 from ..terrain.model import TerrainError, prepare_terrain
 from .metrics import Reading, integrate
 from .plan import MODEL_REVISION, MissingScienceInputs, RunPlan, science_sources
@@ -73,9 +79,8 @@ class Worker:
         horizons = self._horizons(batch.run_id, plan, prepared, source_revision, batch.playhead_only)
         self.queue.set_activity(batch.run_id, "Computing snapshots")
         for index in batch.indices:
-            start = (index // BATCH_SIZE) * BATCH_SIZE
-            stop = min(plan.interval_count + 1, start + BATCH_SIZE)
-            epochs = tuple(plan.at(index) for index in range(start, stop))
+            start, epochs = plan.ephemeris_batch(index)
+            stop = start + len(epochs)
             ephemerides = self._ephemerides(epochs)
 
             self.queue.record_ephemeris(
@@ -96,7 +101,10 @@ class Worker:
             snapshot = trace_snapshot(prepared, ephemerides.samples[index - start], horizons)
             if plan.is_frame(index):
                 path = self.queue.frame_path(batch.run_id, index)
-                _save_grid(path, snapshot.grid)
+                # The rays drawn in the 3D view are saved with the frame, so showing them
+                # later needs no terrain and follows the timeline instantly.
+                rays = site_ray_arrays(prepared, ephemerides.samples[index - start], plan.settings.solar_disk_samples)
+                _save_grid(path, snapshot.grid, rays)
 
             reading = Reading.model_validate(snapshot, from_attributes=True)
             self.queue.record(batch, index, reading)
@@ -157,8 +165,7 @@ class Worker:
         """All integration epochs, loaded in the same cached batches used while processing."""
         samples: list[EphemerisSample] = []
         for start in range(0, plan.interval_count + 1, BATCH_SIZE):
-            stop = min(plan.interval_count + 1, start + BATCH_SIZE)
-            epochs = tuple(plan.at(index) for index in range(start, stop))
+            _, epochs = plan.ephemeris_batch(start)
             samples.extend(self._ephemerides(epochs).samples)
         return samples
 
@@ -178,11 +185,11 @@ class Worker:
         return load_ephemerides_at(epochs, data_dir=self.data_dir, correction="LT+S")
 
 
-def _save_grid(path: Path, grid: SnapshotGrid) -> None:
+def _save_grid(path: Path, grid: SnapshotGrid, rays: dict[str, np.ndarray]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=path.parent) as temporary:
         staging = Path(temporary) / path.name
-        np.savez_compressed(staging, **vars(grid))
+        np.savez_compressed(staging, **vars(grid), **rays)
         staging.replace(path)
 
 

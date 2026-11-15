@@ -8,13 +8,13 @@ from pathlib import Path
 
 from pydantic import AwareDatetime, BaseModel
 
-from ..ephemeris.horizons import KERNEL_NAMES
+from ..ephemeris.horizons import BATCH_SIZE, KERNEL_NAMES
 from ..simulation.engine import SimulationSettings, grid_half_width
 from ..simulation.frames import SiteFootprint
 from ..terrain.model import LOCAL_DEM_NAMES, REGIONAL_DEM_NAMES
 
 # Change this when the solver or output meaning changes so old runs stay immutable.
-MODEL_REVISION = 4
+MODEL_REVISION = 5
 DEFAULT_INTEGRATION_MINUTES = 15
 # One year at the default 15 minute cadence is 35,040 intervals.
 MAX_INTERVALS = 40_000
@@ -57,6 +57,10 @@ class RunPlan(BaseModel):
     def at(self, index: int) -> datetime:
         return min(self.start_utc + index * self.integration_step, self.end_utc)
 
+    def ephemeris_batch(self, index: int) -> tuple[int, tuple[datetime, ...]]:
+        """The first sample index and the epochs of the Horizons batch that holds sample `index`."""
+        return ephemeris_batch(self.start_utc, self.end_utc, self.integration_minutes, index)
+
     def is_frame(self, index: int) -> bool:
         # Integration includes the endpoint. The dashboard date range is half-open.
         return 0 <= index < self.interval_count and index % self.stride == 0
@@ -78,6 +82,26 @@ class RunPlan(BaseModel):
         """
         everything_but_dates = self.model_dump_json(exclude={"start_utc", "end_utc"})
         return hashlib.sha256(everything_but_dates.encode()).hexdigest()
+
+
+def ephemeris_batch(
+    start_utc: datetime, end_utc: datetime, integration_minutes: int, index: int
+) -> tuple[int, tuple[datetime, ...]]:
+    """The first sample index and the epochs of the Horizons batch that holds sample `index`.
+
+    Sample k is at start + k × cadence, and the last sample is the end of the range. Samples
+    are requested from Horizons in fixed batches, so everything that uses the same dates and
+    cadence (every site's run, and the 3D view) asks for identical batches and shares the
+    saved replies.
+    """
+    step = timedelta(minutes=integration_minutes)
+    interval_count = (end_utc - start_utc - timedelta(microseconds=1)) // step + 1
+    if not 0 <= index <= interval_count:
+        raise ValueError("The sample is outside the requested UTC range.")
+
+    first = (index // BATCH_SIZE) * BATCH_SIZE
+    stop = min(interval_count + 1, first + BATCH_SIZE)
+    return first, tuple(min(start_utc + k * step, end_utc) for k in range(first, stop))
 
 
 def create_plan(

@@ -19,7 +19,13 @@ from .frames import (
     local_axes,
     site_directions,
 )
-from .radiation import EARTH_MEAN_RADIUS_M, SUN_RADIUS_M, direct_sunlight, disk_directions
+from .radiation import (
+    EARTH_MEAN_RADIUS_M,
+    SUN_RADIUS_M,
+    direct_sunlight,
+    disk_directions,
+    earth_visibility,
+)
 from .slope import grid_slopes
 
 # A millimetre above the geometric surface avoids re-hitting the source triangle.
@@ -123,6 +129,9 @@ class SnapshotGrid:
     visible_sun_fraction_upper: FloatArray
     irradiance_lower_w_m2: FloatArray
     irradiance_upper_w_m2: FloatArray
+    # Fraction of Earth's disk in line of sight from mast height at each point.
+    earth_visible_fraction_lower: FloatArray
+    earth_visible_fraction_upper: FloatArray
 
 
 @dataclass(frozen=True)
@@ -139,6 +148,9 @@ class SnapshotSummary:
     half_disk_lit_area_fraction: Bounds | None = None
     # Lit (at least half the Sun visible) on ground no steeper than LANDING_SLOPE_LIMIT_DEG.
     usable_area_fraction: Bounds | None = None
+    # Share of the site with at least half of Earth's disk in line of sight from mast height.
+    # None in runs saved before model revision 5.
+    earth_visible_area_fraction: Bounds | None = None
 
 
 @dataclass(frozen=True)
@@ -154,6 +166,15 @@ class Snapshot:
     grid: SnapshotGrid
     # Fraction of Earth's apparent disk visible from the mast; None without ground.
     earth_disk_visible_fraction: Bounds | None = None
+
+
+@dataclass(frozen=True)
+class CentreInstruments:
+    """Ground height and instrument positions at the site centre, Moon-fixed metres."""
+
+    ground_height_m: float
+    mast_origin_m: FloatArray
+    collector_origin_m: FloatArray
 
 
 @dataclass(frozen=True)
@@ -228,19 +249,7 @@ def prepare_site(
         normals.append(_collector_normal(ground.normal, up, settings))
 
     axes = local_axes(site.latitude_deg, site.longitude_deg)
-    up = axes[2]
-    center = terrain.surface_at(up)
-    center_height = None
-    mast_origin = None
-    collector_origin = None
-    if center is not None:
-        # Spherical radial elevation: h₀ = ‖x₀‖ − R
-        #   h₀ (center_height) - Center terrain elevation, in metres.
-        #   x₀ (center.position_m) - Center terrain point, Moon-fixed metres.
-        #   R (MOON_RADIUS_M) - Spherical datum radius, in metres.
-        center_height = float(np.linalg.norm(center.position_m) - MOON_RADIUS_M)
-        mast_origin = _receiver_origin(center.position_m, up, settings.mast_height_m)
-        collector_origin = _receiver_origin(center.position_m, up, settings.collector_height_m)
+    centre = place_centre_instruments(site, terrain, settings)
 
     return PreparedSite(
         terrain=terrain,
@@ -255,9 +264,29 @@ def prepare_site(
         receiver_up=np.asarray(ups),
         collector_normals=np.asarray(normals),
         axes=axes,
-        center_height_m=center_height,
-        mast_origin_m=mast_origin,
-        center_collector_m=collector_origin,
+        center_height_m=None if centre is None else centre.ground_height_m,
+        mast_origin_m=None if centre is None else centre.mast_origin_m,
+        center_collector_m=None if centre is None else centre.collector_origin_m,
+    )
+
+
+def place_centre_instruments(
+    site: SiteFootprint, terrain: Terrain, settings: SimulationSettings
+) -> CentreInstruments | None:
+    """Put the mast and the collector above the site centre, or None without ground there."""
+    _, _, up = local_axes(site.latitude_deg, site.longitude_deg)
+    ground = terrain.surface_at(up)
+    if ground is None:
+        return None
+
+    # Spherical radial elevation: h₀ = ‖x₀‖ − R
+    #   h₀ (ground_height_m) - Centre terrain elevation, in metres.
+    #   x₀ (ground.position_m) - Centre terrain point, Moon-fixed metres.
+    #   R (MOON_RADIUS_M) - Spherical datum radius, in metres.
+    return CentreInstruments(
+        ground_height_m=float(np.linalg.norm(ground.position_m) - MOON_RADIUS_M),
+        mast_origin_m=_receiver_origin(ground.position_m, up, settings.mast_height_m),
+        collector_origin_m=_receiver_origin(ground.position_m, up, settings.collector_height_m),
     )
 
 
@@ -283,8 +312,8 @@ def trace_snapshot(
     if ephemeris.frame != prepared.terrain.frame:
         raise ValueError("The ephemeris and terrain must use the same lunar frame.")
 
-    visible_lower, visible_upper, flux_lower, flux_upper = (
-        np.full(prepared.inside.shape, np.nan) for _ in range(4)
+    visible_lower, visible_upper, flux_lower, flux_upper, earth_lower, earth_upper = (
+        np.full(prepared.inside.shape, np.nan) for _ in range(6)
     )
     if len(prepared.solar_origins_m):
         known_ground = np.isfinite(prepared.heights_m)
@@ -303,6 +332,22 @@ def trace_snapshot(
             horizons,
         )
 
+        # Earth is seen from mast height, so the receivers are raised by the height difference:
+        #   x' = x + (h_mast − h_collector)·u. The terrain horizons were built at collector
+        #   height, so they only apply when the two heights are equal.
+        lift_m = prepared.settings.mast_height_m - prepared.settings.collector_height_m
+        earth_origins_m = prepared.solar_origins_m + lift_m * prepared.receiver_up
+        (
+            earth_lower[known_ground],
+            earth_upper[known_ground],
+        ) = earth_visibility(
+            prepared.terrain,
+            earth_origins_m,
+            ephemeris.earth_m,
+            EARTH_DISK_SAMPLES,
+            horizons if lift_m == 0 else None,
+        )
+
     grid = SnapshotGrid(
         offsets_m=prepared.offsets_m,
         inside_site=prepared.inside,
@@ -313,6 +358,8 @@ def trace_snapshot(
         visible_sun_fraction_upper=visible_upper,
         irradiance_lower_w_m2=flux_lower,
         irradiance_upper_w_m2=flux_upper,
+        earth_visible_fraction_lower=earth_lower,
+        earth_visible_fraction_upper=earth_upper,
     )
     summary = _summarize(grid, prepared.weights)
     if prepared.mast_origin_m is None or prepared.center_collector_m is None:
@@ -465,6 +512,18 @@ def _summarize(grid: SnapshotGrid, weights: FloatArray) -> SnapshotSummary:
         float(weights[half_lit_upper & gentle_or_unknown].sum() / total_weight),
     )
 
+    # Earth-visible area bounds: E₋ = Σᵢ∈B wᵢ/W; E₊ = Σᵢ∈P wᵢ/W
+    #   E₋, E₊ (earth_area) - Dimensionless footprint fraction with ≥ ½ of Earth's disk in view.
+    #   B - Samples whose lower visible-disk bound is ≥ 0.5.
+    #   P - Samples whose upper bound is ≥ 0.5, or with unknown ground.
+    #   wᵢ (weights), W (total_weight) - Sample weights and total reporting weight.
+    earth_lower = grid.earth_visible_fraction_lower[inside]
+    earth_upper = grid.earth_visible_fraction_upper[inside]
+    earth_area = Bounds(
+        float(weights[earth_lower >= 0.5].sum() / total_weight),
+        float(weights[(earth_upper >= 0.5) | ~ground].sum() / total_weight),
+    )
+
     # Footprint mean disk visibility: f̄ = Σᵢ(wᵢ fᵢ)/Σᵢwᵢ
     #   f̄ (mean_visibility) - Dimensionless mean solar-disk visibility bounds.
     #   fᵢ (disk_lower/upper) - Dimensionless per-point visibility bound.
@@ -487,6 +546,7 @@ def _summarize(grid: SnapshotGrid, weights: FloatArray) -> SnapshotSummary:
         mean_irradiance_on_known_ground_w_m2=mean_flux,
         half_disk_lit_area_fraction=half_disk_lit_area,
         usable_area_fraction=usable_area,
+        earth_visible_area_fraction=earth_area,
     )
 
 
