@@ -344,6 +344,14 @@ class RunQueue:
         for run_id in run_ids:
             shutil.rmtree(self.directory / run_id, ignore_errors=True)
 
+    def unfinished_count(self) -> int:
+        """How many runs are waiting or running."""
+        with self._connection() as db:
+            row = db.execute(
+                "SELECT COUNT(*) FROM runs WHERE stage IN ('queued', 'running') AND orphaned = 0"
+            ).fetchone()
+        return int(row[0])
+
     def list_runs(self, limit: int = 30) -> list[RunStatus]:
         """The most recently submitted runs first, whatever their state."""
         with self._connection() as db:

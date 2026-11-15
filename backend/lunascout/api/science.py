@@ -22,6 +22,7 @@ from ..terrain.model import TerrainError
 from . import site_store
 from .insight import InsightService, SiteInsight
 from .models import RunPriority, RunSpec, SiteSpec
+from .public import PublicMode
 
 RunId = Annotated[str, PathParameter(pattern=r"^[a-f0-9]{64}$")]
 logger = logging.getLogger(__name__)
@@ -52,7 +53,7 @@ class FramePayload(BaseModel):
     grid: GridPayload
 
 
-def science_router(data_dir: Path, queue: RunQueue) -> APIRouter:
+def science_router(data_dir: Path, queue: RunQueue, public: PublicMode = PublicMode()) -> APIRouter:
     router = APIRouter(prefix="/api")
     insights = InsightService(data_dir)
 
@@ -87,6 +88,8 @@ def science_router(data_dir: Path, queue: RunQueue) -> APIRouter:
                 integration_minutes=spec.integration_minutes,
             )
 
+            # A run that already exists is only reused, so it never counts against the busy limit.
+            public.check_run(spec, None if queue.status(plan.identity()) else queue.unfinished_count())
             return queue.submit(plan, spec.priority_utc)
         except MissingScienceInputs as exc:
             raise HTTPException(503, str(exc)) from exc
@@ -108,6 +111,7 @@ def science_router(data_dir: Path, queue: RunQueue) -> APIRouter:
         it comes back, and a restore later discards whatever falls outside its timeline. Without
         it, everything of the site is removed.
         """
+        public.require_private()
         if keep:
             return PurgeResult(
                 runs_removed=0, runs_kept=queue.keep_site(latitude_deg, longitude_deg, radius_m), horizon_maps_removed=0
