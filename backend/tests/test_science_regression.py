@@ -11,7 +11,7 @@ import pytest
 from lunascout.ephemeris.horizons import EphemerisSample
 from lunascout.jobs.metrics import Reading, integrate
 from lunascout.jobs.plan import RunPlan
-from lunascout.jobs.scheduler import RunQueue
+from lunascout.jobs.scheduler import RunQueue, WorkBatch
 from lunascout.simulation.engine import SimulationSettings, calculate_snapshot
 from lunascout.simulation.frames import SiteFootprint, local_axes, site_directions
 from lunascout.simulation.radiation import (
@@ -201,3 +201,109 @@ def test_run_list_and_worker_heartbeat(tmp_path):
     assert not queue.worker_status(now_ns=time_ns() + 60_000_000_000).running
     queue.stop_beating()
     assert not queue.worker_status().running
+
+
+def _hourly_plan(start, hours, **settings):
+    return RunPlan(
+        site=SiteFootprint(-89.7668, -171.87, 500), settings=SimulationSettings(**settings),
+        start_utc=start, end_utc=start + timedelta(hours=hours),
+        snapshot_minutes=60, integration_minutes=15, model_revision=1, sources_sha256={},
+    )
+
+
+def _compute_all(queue, plan):
+    """Stand in for the worker: record every sample, and a snapshot file for each published hour."""
+    run_id = plan.identity()
+    for index in range(plan.interval_count + 1):
+        if plan.is_frame(index):
+            path = queue.frame_path(run_id, index)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"snapshot")
+        queue.record(WorkBatch(run_id, plan, (index,)), index, _reading(plan.at(index), "clear", 1, 1000))
+
+
+def test_changing_the_range_computes_only_the_missing_samples(tmp_path):
+    start = datetime(2026, 11, 14, tzinfo=UTC)
+    queue = RunQueue(tmp_path)
+    queue.initialize()
+    short, long, shorter = _hourly_plan(start, 3), _hourly_plan(start, 6), _hourly_plan(start, 2)
+    assert short.physics_key() == long.physics_key() != _hourly_plan(start, 3, solar_disk_samples=10).physics_key()
+
+    queue.submit(short)
+    _compute_all(queue, short)
+    queue.complete(short.identity(), integrate(queue.readings(short.identity())))
+
+    # A longer range starts with the samples it shares. The old closing endpoint was never a
+    # published snapshot, but is one now, so it is computed again along with everything after it.
+    expanded = queue.submit(long)
+    assert expanded.completed_samples == 12
+    assert expanded.ready_indices == [0, 1, 2]
+    shared = [queue.frame_path(short.identity(), 4), queue.frame_path(long.identity(), 4)]
+    assert shared[0].stat().st_ino == shared[1].stat().st_ino
+    assert queue.provenance(long.identity()).reused_samples[0].samples == 12
+    batch = queue.next_batch(100)
+    assert batch is not None and batch.run_id == long.identity()
+    assert batch.indices[:3] == (12, 16, 20) and set(batch.indices) == set(range(12, 25))
+
+    # A shorter range is complete at once, and the earlier results are still there.
+    contracted = queue.submit(shorter)
+    assert (contracted.completed_samples, contracted.total_samples) == (9, 9)
+    assert queue.status(short.identity()).completed_samples == 13
+
+    # Different physics never borrows samples.
+    assert queue.submit(_hourly_plan(start, 3, solar_disk_samples=10)).completed_samples == 0
+
+
+def test_deleting_a_site_removes_its_runs_and_snapshot_files(tmp_path):
+    start = datetime(2026, 11, 14, tzinfo=UTC)
+    queue = RunQueue(tmp_path)
+    queue.initialize()
+    plan = _hourly_plan(start, 2)
+    queue.submit(plan)
+    _compute_all(queue, plan)
+    queue.submit(_hourly_plan(start, 4))
+
+    assert queue.purge_site(-89.7668, -171.87, 500) == 2
+    assert queue.list_runs() == []
+    assert not (tmp_path / "runs" / plan.identity()).exists()
+    assert queue.purge_site(-89.7668, -171.87, 500) == 0
+
+
+def test_a_restored_reference_site_keeps_only_what_falls_inside_its_timeline(tmp_path):
+    start = datetime(2026, 11, 14, tzinfo=UTC)
+    queue = RunQueue(tmp_path)
+    queue.initialize()
+    original = _hourly_plan(start, 6)
+    queue.submit(original)
+    _compute_all(queue, original)
+    queue.complete(original.identity(), integrate(queue.readings(original.identity())))
+
+    # Deleting the site hides its runs but keeps their results.
+    assert queue.keep_site(-89.7668, -171.87, 500) == 1
+    assert queue.list_runs() == []
+    assert (tmp_path / "runs" / original.identity()).exists()
+
+    # Bringing it back with a timeline covering only the middle hours restores just those.
+    later = _hourly_plan(start + timedelta(hours=2), 2)
+    restored = queue.submit(later)
+    assert (restored.completed_samples, restored.total_samples) == (9, 9)
+    assert restored.ready_indices == [0, 1]
+    assert queue.frame_path(later.identity(), 0).read_bytes() == b"snapshot"
+
+    # The old run, with the hours outside the new timeline, is gone.
+    assert queue.status(original.identity()) is None
+    assert not (tmp_path / "runs" / original.identity()).exists()
+
+
+def test_kept_results_expire_when_the_site_never_returns(tmp_path):
+    start = datetime(2026, 11, 14, tzinfo=UTC)
+    queue = RunQueue(tmp_path)
+    queue.initialize()
+    plan = _hourly_plan(start, 2)
+    queue.submit(plan)
+    _compute_all(queue, plan)
+    queue.keep_site(-89.7668, -171.87, 500)
+
+    assert queue.prune_kept(timedelta(days=14)) == 0
+    assert queue.prune_kept(timedelta(seconds=-1)) == 1
+    assert queue.status(plan.identity()) is None
