@@ -10,6 +10,7 @@ from . import site_store
 from .models import Site, SiteSpec
 from .context import context_router
 from .science import science_router
+from .site_map import site_map_router
 from .space import space_router
 
 
@@ -30,6 +31,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     app.add_middleware(GZipMiddleware, minimum_size=2000)
     app.include_router(science_router(catalog_path, queue))
     app.include_router(context_router(catalog_path))
+    app.include_router(site_map_router(queue))
     app.include_router(space_router(catalog_path, queue))
 
     @app.get("/api/health")
