@@ -49,6 +49,13 @@ class EphemerisError(RuntimeError):
     """Horizons or SPICE could not provide a validated state."""
 
 
+class HorizonsUnavailable(EphemerisError):
+    """JPL Horizons could not be reached or was temporarily overloaded.
+
+    The same request may succeed later, unlike a rejected query or invalid reply.
+    """
+
+
 @dataclass(frozen=True)
 class EphemerisSample:
     """Sun and Earth positions in lunar Cartesian metres at one UTC instant."""
@@ -254,24 +261,26 @@ def _fetch(query: str, contact: str | None) -> bytes:
                 return reply.read()
         except HTTPError as exc:
             exc.close()
-            if attempt or exc.code not in RETRYABLE_HTTP_CODES:
+            if exc.code not in RETRYABLE_HTTP_CODES:
                 raise EphemerisError(f"Horizons returned HTTP {exc.code}.") from exc
+            if attempt:
+                raise HorizonsUnavailable(f"Horizons returned HTTP {exc.code}.") from exc
 
             retry_after = exc.headers.get("Retry-After")
             if retry_after and (not retry_after.isdecimal() or int(retry_after) > 15):
-                raise EphemerisError(
+                raise HorizonsUnavailable(
                     "Horizons is rate limited. Retry after the indicated delay."
                 ) from exc
             delay = max(2, int(retry_after or 0))
             logger.warning("Horizons returned HTTP %s. Retrying in %s seconds.", exc.code, delay)
         except (OSError, HTTPException) as exc:
             if attempt:
-                raise EphemerisError("Could not reach JPL Horizons.") from exc
+                raise HorizonsUnavailable("Could not reach JPL Horizons.") from exc
             delay = 2
             logger.warning("Horizons connection failed. Retrying in %s seconds.", delay)
         sleep(delay)
 
-    raise EphemerisError("Horizons request exhausted its retries.")
+    raise HorizonsUnavailable("Horizons request exhausted its retries.")
 
 
 def _parse_table(
