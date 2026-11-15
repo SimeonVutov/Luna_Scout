@@ -23,7 +23,8 @@ LunaScout is our project for the 2026 NASA Space Apps Challenge *Lunar Landing S
 - **Lit and gentle.** The share of the site that is both in sunlight and on ground no steeper than 10°, updated with the timeline.
 - **Skyline close-up.** The Sun and Earth drawn against the real terrain horizon from the site centre, at true angular scale, with the visible share of their disks.
 - **Map layers.** Solar visibility, slope, and the footprints of NASA's 5 m terrain grids, so you can see where results are most trustworthy.
-- **3D terrain.** A local relief view built from the same LOLA data the solver uses.
+- **Earth radio coverage.** A map layer (2D, Compare and 3D) showing how much of Earth's disk each point of the site sees from mast height, and the share of the site that sees at least half of it. This is geometric line of sight through the terrain, not signal strength or a link budget.
+- **3D view (the default).** The Moon as a globe with NASA photos, the Sun and Earth where JPL Horizons puts them, and LOLA relief that gets more detailed as you zoom toward the south pole. The Moon stays fixed and the sky moves, so playing the timeline never spins the scene. Toggle the simulation's Sun and Earth disk rays, the solar-visibility layer, vertical exaggeration, or stand at a site to see its sky. Shading shows relief only; sunlit and shadowed ground comes from the simulation.
 - **Comparison.** Run two sites with the same settings and the same playhead.
 
 ## Quick start
@@ -62,7 +63,7 @@ Open the URL Vite prints (usually <http://localhost:5173>). The API documentatio
 
 1. Choose a reference site, or press **Add site** and click the map.
 2. Set the UTC date range and press **Run simulation**. The playhead time is computed first.
-3. Scrub the timeline to explore snapshots. Toggle **Solar visibility** on the map or in **3D terrain**.
+3. Scrub the timeline to explore snapshots. Toggle **Solar visibility** on the map or in the **3D view**.
 4. Pick a second site under **Compare with** to see the two side by side.
 
 The first run at a new site builds a terrain horizon map, which takes about 40–70 s. Later runs and date changes at that site reuse it.
@@ -85,7 +86,7 @@ NASA LOLA DEMs ──► curved triangulated terrain ──────┘      
 | Folder | Responsibility |
 |---|---|
 | `backend/lunascout/ephemeris` | Horizons requests, response cache, frame rotation |
-| `backend/lunascout/terrain` | DEM loading, ray tracer, horizon maps, 3D preview |
+| `backend/lunascout/terrain` | DEM loading, ray tracer, horizon maps, elevation tiles for the 3D view |
 | `backend/lunascout/simulation` | Site grid, irradiance, Earth visibility, event windows |
 | `backend/lunascout/jobs` | Run queue, worker, time integration |
 | `backend/lunascout/api` | FastAPI routes and the site catalogue |

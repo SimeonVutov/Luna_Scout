@@ -84,10 +84,13 @@ Maps are cached in `cache/horizons/`. The cache key covers the terrain checksums
 | `POST /api/runs` | Queues or reuses a run. Identical inputs, including data checksums, share one result. |
 | `GET /api/runs/{id}` | Progress, ready snapshots and the period summary |
 | `GET /api/runs/events?run_id=…` | Live progress (server-sent events) |
-| `GET /api/runs/{id}/snapshots/{index}` | One hour's metrics and sunlight grid |
+| `GET /api/runs/{id}/snapshots/{index}` | One hour's metrics, sunlight grid and Earth line-of-sight grid (fraction of Earth's disk seen from mast height per point; absent before model revision 5) |
 | `GET /api/runs/{id}/series` | Sun and Earth angles and metrics per published hour |
 | `GET /api/runs/{id}/provenance` | Data checksums and Horizons reply digests |
-| `POST /api/terrain/preview` | Elevations for the 3D view |
+| `GET /api/terrain/tiles/{level}/{row}/{column}` | LOLA heights of one tile (65×65 nodes plus a one-node border, little-endian float32, north to south) on the same south-polar tile grid as NASA Moon Trek imagery. Levels 0–13 reach 4 m spacing. Saved under `cache/terrain_tiles`. |
+| `GET /api/sky?start_utc&end_utc&integration_minutes&index` | Sun and Earth positions (Moon-fixed metres) for the Horizons batch holding that sample. Uses the same batches as simulation runs, so replies are shared. |
+| `GET /api/runs/{id}/rays/{index}` | The 3D view's rays for one published snapshot: Sun-disk rays from about 40 evenly spaced grid points (the simulation's own rays) and Earth-disk rays from the same points at mast height (an illustration; the simulation reports Earth only at the centre mast). The worker saves origins, clear/blocked/unresolved and blocking distances with each frame, so this needs no terrain and is fast. Frames saved before this existed return 404. |
+| `POST /api/terrain/rays` | The same rays traced on demand for a time that has no saved frame, plus the centre-mast fans. Loads the site's terrain, so the first call takes seconds. |
 
 ## Known limits
 
