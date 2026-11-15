@@ -1,0 +1,17 @@
+import type { RunStatus, SimulationOptions, Site } from "../../api/types";
+import { useRunOutput, useRunSeries } from "./useScience";
+import { useSiteContext } from "./useSiteContext";
+import { useSiteInsight } from "./useSiteInsight";
+
+/**
+ * Everything shown about one site beside its run: the snapshot at the playhead, the run's series,
+ * the terrain insight and NASA's long-term maps. Nothing is requested while `active` is false.
+ */
+export function useSiteData(site: Site | null, run: RunStatus | null, timeIndex: number, options: SimulationOptions, active: boolean) {
+  return {
+    output: useRunOutput(active ? run : null, timeIndex),
+    series: useRunSeries(active ? run : null),
+    insight: useSiteInsight(active ? site : null, options),
+    context: useSiteContext(active ? site : null, options),
+  };
+}
