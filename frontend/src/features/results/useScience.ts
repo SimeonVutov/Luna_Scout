@@ -121,7 +121,7 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
 }
 
 export function useRunOutput(run: RunStatus | null, index: number) {
-  const [frame, setFrame] = useState<{ key: string; value: FramePayload } | null>(null);
+  const [frame, setFrame] = useState<{ key: string; runId: string; value: FramePayload } | null>(null);
   const [frameError, setFrameError] = useState<{ key: string; message: string } | null>(null);
   const id = run?.run_id;
   const ready = Boolean(run?.ready_indices.includes(index));
@@ -132,15 +132,20 @@ export function useRunOutput(run: RunStatus | null, index: number) {
     const controller = new AbortController();
     setFrameError(null);
     void runSnapshot(id, index, controller.signal).then((value) => {
-      if (!controller.signal.aborted) setFrame({ key, value });
+      if (!controller.signal.aborted) setFrame({ key, runId: id, value });
     }).catch((error) => {
       if (!controller.signal.aborted) setFrameError({ key, message: message(error) });
     });
     return () => controller.abort();
   }, [id, index, key]);
 
+  // While the next hour loads, keep showing the previous one from the same run. Dropping it
+  // would blank the map and the numbers for a moment on every step of the timeline. An hour
+  // that has not been computed yet still shows nothing, so old data is never passed off as new.
+  const current = frame?.key === key ? frame : null;
+  const retained = key !== null && frame?.runId === id ? frame : null;
   return {
-    frame: frame?.key === key ? frame.value : null,
+    frame: (current ?? retained)?.value ?? null,
     error: frameError?.key === key ? frameError.message : null,
   };
 }
