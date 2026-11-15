@@ -25,11 +25,29 @@ from ..simulation.frames import (
 from . import mesh
 
 REGIONAL_DEM_NAMES = ("LDEM_60S_240MPP_ADJ.TIF", "LDEM_80S_80MPP_ADJ.TIF")
-LOCAL_DEM_NAMES = ("Site01_final_adj_5mpp_surf.tif", "Site04_final_adj_5mpp_surf.tif")
+# NASA Goddard's 5 m LOLA grids for the ten candidate south-pole landing sites
+# named in https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/README (Barker et al. 2021).
+LOCAL_DEM_SITES = (
+    "Site01",  # Connecting Ridge
+    "Site04",  # Shackleton Rim
+    "Site06",  # Nobile Rim 1
+    "Site07",  # Peak near Shackleton
+    "Site11",  # de Gerlache Rim
+    "Site20",  # Leibnitz Beta Plateau
+    "Site23",  # Malapert Massif
+    "Haworth",
+    "Shoemaker",
+    "DM2",  # Nobile Rim 2
+)
+LOCAL_DEM_NAMES = tuple(f"{site}_final_adj_5mpp_surf.tif" for site in LOCAL_DEM_SITES)
 _GNOMONIC_CRS = CRS.from_proj4(
     f"+proj=gnom +lat_0=-90 +lon_0=0 +R={MOON_RADIUS_M} +units=m +no_defs"
 )
 _REGIONAL_DETAIL_RANGE_M = 120_000
+# 5 m tiles are loaded only within this distance of the site. Farther away the
+# 80 m grid's posting subtends < 0.08° (vs the 0.53° solar disk), while keeping
+# every nearby 5 m tile would hold more than 1 GB of grids in memory per site.
+_LOCAL_DETAIL_RANGE_M = 60_000
 _SEAM_ALIGNMENT_M = 240
 _MAX_TERRAIN_GRID_NODES = 100_000_000
 
@@ -184,12 +202,14 @@ def prepare_terrain(
     full_bounds = _site_bounds(site, centre, horizon_angle)
     middle_angle = _REGIONAL_DETAIL_RANGE_M / MOON_RADIUS_M if trace_horizon else 0.0
     middle_bounds = _site_bounds(site, centre, middle_angle)
+    local_angle = _LOCAL_DETAIL_RANGE_M / MOON_RADIUS_M if trace_horizon else 0.0
+    local_bounds = _site_bounds(site, centre, local_angle)
 
     sources: list[TerrainSource] = []
     depths: list[FloatArray] = []
     geometry: list[tuple[float, float, float]] = []
     inputs = [(regional[0], full_bounds), (regional[1], middle_bounds)]
-    inputs.extend((path, full_bounds) for path in local)
+    inputs.extend((path, local_bounds) for path in local)
 
     try:
         # Load tied resolutions in filename order. Thus input order never changes

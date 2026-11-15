@@ -25,6 +25,7 @@ from .simulation.engine import SimulationSettings, Snapshot, calculate_snapshot
 from .simulation.frames import MOON_RADIUS_M, SiteFootprint
 from .terrain.model import (
     LOCAL_DEM_NAMES,
+    LOCAL_DEM_SITES,
     REGIONAL_DEM_NAMES,
     Terrain,
     TerrainError,
@@ -141,8 +142,8 @@ def _fetch_data(data_dir: Path) -> None:
         for name in REGIONAL_DEM_NAMES
     )
     inputs.extend(
-        (terrain_dir / name, f"{_GODDARD_DATA_URL}/LOLA_5mpp/{name[:6]}/{name}")
-        for name in LOCAL_DEM_NAMES
+        (terrain_dir / name, f"{_GODDARD_DATA_URL}/LOLA_5mpp/{site}/{name}")
+        for site, name in zip(LOCAL_DEM_SITES, LOCAL_DEM_NAMES, strict=True)
     )
 
     for path, url in inputs:
