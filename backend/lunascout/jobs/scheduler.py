@@ -1,10 +1,13 @@
 """Persist runs and choose short, fair batches for the science worker."""
 
+import os
+import shutil
 import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from itertools import islice
 from pathlib import Path
 from time import time_ns
 from typing import Literal
@@ -56,9 +59,20 @@ class EphemerisChunk(BaseModel):
     kernels_sha256: dict[str, str]
 
 
+class ReusedSamples(BaseModel):
+    from_run_id: str
+    samples: int
+
+
 class Provenance(BaseModel):
     plan: RunPlan
     ephemeris_chunks: list[EphemerisChunk]
+    # Samples copied from earlier runs of the same site and settings instead of recomputed.
+    reused_samples: list[ReusedSamples] = []
+
+
+class RunRemoved(RuntimeError):
+    """The run was deleted, for example with its site, while the worker was computing it."""
 
 
 # A worker that has not reported for this long is treated as stopped.
@@ -91,7 +105,12 @@ class RunQueue:
         self.directory.mkdir(parents=True, exist_ok=True)
         with self._connection() as db:
             db.execute("PRAGMA journal_mode = WAL")
-            db.executescript("""
+            self._create_tables(db)
+            self._add_physics_keys(db)
+
+    @staticmethod
+    def _create_tables(db: sqlite3.Connection) -> None:
+        db.executescript("""
                 CREATE TABLE IF NOT EXISTS runs (
                     run_id TEXT PRIMARY KEY,
                     plan TEXT NOT NULL,
@@ -111,6 +130,12 @@ class RunQueue:
                     reading TEXT NOT NULL,
                     PRIMARY KEY (run_id, sample_index)
                 );
+                CREATE TABLE IF NOT EXISTS reused_samples (
+                    run_id TEXT NOT NULL REFERENCES runs(run_id),
+                    from_run_id TEXT NOT NULL,
+                    samples INTEGER NOT NULL,
+                    PRIMARY KEY (run_id, from_run_id)
+                );
                 CREATE TABLE IF NOT EXISTS worker (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     pid INTEGER,
@@ -124,16 +149,34 @@ class RunQueue:
                     provenance TEXT NOT NULL,
                     PRIMARY KEY (run_id, start_index)
                 );
-            """)
+        """)
+
+    @staticmethod
+    def _add_physics_keys(db: sqlite3.Connection) -> None:
+        """Older databases lack the column that lets runs share samples; add and fill it."""
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(runs)")}
+        if "physics_key" not in columns:
+            db.execute("ALTER TABLE runs ADD COLUMN physics_key TEXT")
+        if "orphaned" not in columns:
+            # Zero for a live run; otherwise when its site was deleted and its results were kept.
+            db.execute("ALTER TABLE runs ADD COLUMN orphaned INTEGER NOT NULL DEFAULT 0")
+        for row in db.execute("SELECT run_id, plan FROM runs WHERE physics_key IS NULL").fetchall():
+            key = RunPlan.model_validate_json(row["plan"]).physics_key()
+            db.execute("UPDATE runs SET physics_key = ? WHERE run_id = ?", (key, row["run_id"]))
 
     def submit(self, plan: RunPlan, priority_at: datetime | None = None) -> RunStatus:
-        """Reuse identical inputs. A failed run can resume its remaining samples."""
+        """Reuse identical inputs. A failed run can resume its remaining samples.
+
+        A new run first copies the samples that earlier runs of the same site and settings already
+        computed at the same times, so a longer or shorter range only computes what is missing.
+        """
         index = plan.frame_index(priority_at) if priority_at is not None else 0
         run_id = plan.identity()
         with self._connection() as db:
+            is_new = self._find(db, run_id) is None
             db.execute(
                 """
-                INSERT INTO runs (run_id, plan, priority_index, submitted) VALUES (?, ?, ?, ?)
+                INSERT INTO runs (run_id, plan, priority_index, submitted, physics_key) VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(run_id) DO UPDATE SET
                     priority_index = excluded.priority_index,
                     message = NULL,
@@ -141,18 +184,174 @@ class RunQueue:
                     revision = runs.revision + CASE WHEN runs.stage = 'failed' THEN 1 ELSE 0 END
                 WHERE runs.stage != 'complete'
                 """,
-                (run_id, plan.model_dump_json(), index, time_ns()),
+                (run_id, plan.model_dump_json(), index, time_ns(), plan.physics_key()),
             )
+            db.execute("UPDATE runs SET orphaned = 0 WHERE run_id = ?", (run_id,))
+            discarded: list[str] = []
+            if is_new:
+                self._reuse_samples(db, run_id, plan)
+                # What was kept for this site has now been restored where it falls inside the new
+                # range. The rest, outside the timeline, is of no further use.
+                discarded = self._remove_runs(db, self._orphaned_runs_of(db, plan))
             row = self._find(db, run_id)
             if row is None:
                 raise RuntimeError("Could not read the submitted run.")
-            return self._status(db, row)
+            status = self._status(db, row)
+
+        self._delete_run_files(discarded)
+        return status
+
+    def _reuse_samples(self, db: sqlite3.Connection, run_id: str, plan: RunPlan) -> None:
+        """Copy matching samples, and their snapshot files, from earlier runs of the same physics."""
+        step = plan.integration_step
+        siblings = db.execute(
+            "SELECT run_id, plan FROM runs WHERE physics_key = ? AND run_id != ?",
+            (plan.physics_key(), run_id),
+        ).fetchall()
+
+        total = 0
+        for sibling in siblings:
+            other = RunPlan.model_validate_json(sibling["plan"])
+            shift = other.start_utc - plan.start_utc
+            if shift % step != timedelta(0):
+                continue
+
+            # New index = old index + offset. Frames repeat every `stride` samples, so they only
+            # line up between the two runs when the offset is a whole number of strides.
+            offset = shift // step
+            if offset % plan.stride != 0:
+                continue
+
+            first = max(0, -offset)
+            last = min(other.interval_count, plan.interval_count - offset)
+            if first > last:
+                continue
+
+            copied = 0
+            rows = db.execute(
+                "SELECT sample_index, is_frame, reading FROM readings WHERE run_id = ? AND sample_index BETWEEN ? AND ?",
+                (sibling["run_id"], first, last),
+            ).fetchall()
+            for row in rows:
+                old_index, new_index = row["sample_index"], row["sample_index"] + offset
+                if other.at(old_index) != plan.at(new_index):
+                    continue
+                if plan.is_frame(new_index) and not (
+                    row["is_frame"]
+                    and self._link_frame(self.frame_path(sibling["run_id"], old_index), self.frame_path(run_id, new_index))
+                ):
+                    continue
+
+                inserted = db.execute(
+                    "INSERT OR IGNORE INTO readings VALUES (?, ?, ?, ?)",
+                    (run_id, new_index, plan.is_frame(new_index), row["reading"]),
+                )
+                copied += inserted.rowcount
+
+            if copied:
+                db.execute("INSERT OR REPLACE INTO reused_samples VALUES (?, ?, ?)", (run_id, sibling["run_id"], copied))
+                total += copied
+
+        if total:
+            db.execute(
+                "UPDATE runs SET completed_samples = completed_samples + ?, revision = revision + 1 WHERE run_id = ?",
+                (total, run_id),
+            )
+
+    @staticmethod
+    def _link_frame(source: Path, destination: Path) -> bool:
+        """Share a snapshot file between runs with a hard link, or copy it where links fail."""
+        if not source.is_file():
+            return False
+        if destination.exists():
+            return True
+
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(source, destination)
+        except OSError:
+            shutil.copy2(source, destination)
+        return True
+
+    def purge_site(self, latitude_deg: float, longitude_deg: float, radius_m: float) -> int:
+        """Delete every run and snapshot file of a site; returns how many runs were removed.
+
+        Snapshot files are hard-linked between runs, so a file is only freed once every run that
+        shares it is gone.
+        """
+        with self._connection() as db:
+            doomed = self._remove_runs(db, self._runs_of_site(db, latitude_deg, longitude_deg, radius_m))
+        self._delete_run_files(doomed)
+        return len(doomed)
+
+    def keep_site(self, latitude_deg: float, longitude_deg: float, radius_m: float) -> int:
+        """Hide a deleted site's runs but keep their results, so the site can be restored later.
+
+        Runs still computing are stopped, since nobody is waiting for them. Returns the run count.
+        """
+        with self._connection() as db:
+            kept = self._runs_of_site(db, latitude_deg, longitude_deg, radius_m)
+            for run_id in kept:
+                db.execute(
+                    """
+                    UPDATE runs SET orphaned = ?, revision = revision + 1,
+                        message = CASE WHEN stage IN ('queued', 'running') THEN 'The site was deleted.' ELSE message END,
+                        stage = CASE WHEN stage IN ('queued', 'running') THEN 'failed' ELSE stage END
+                    WHERE run_id = ?
+                    """,
+                    (time_ns(), run_id),
+                )
+        return len(kept)
+
+    def prune_kept(self, older_than: timedelta) -> int:
+        """Delete kept results of sites that never came back; returns how many runs were removed."""
+        cutoff = time_ns() - int(older_than.total_seconds() * 1e9)
+        with self._connection() as db:
+            stale = [
+                row["run_id"]
+                for row in db.execute("SELECT run_id FROM runs WHERE orphaned > 0 AND orphaned < ?", (cutoff,))
+            ]
+            doomed = self._remove_runs(db, stale)
+        self._delete_run_files(doomed)
+        return len(doomed)
+
+    @staticmethod
+    def _runs_of_site(db: sqlite3.Connection, latitude_deg: float, longitude_deg: float, radius_m: float) -> list[str]:
+        return [
+            row["run_id"]
+            for row in db.execute("SELECT run_id, plan FROM runs").fetchall()
+            if _same_site(RunPlan.model_validate_json(row["plan"]), latitude_deg, longitude_deg, radius_m)
+        ]
+
+    def _orphaned_runs_of(self, db: sqlite3.Connection, plan: RunPlan) -> list[str]:
+        site = plan.site
+        kept = set(self._runs_of_site(db, site.latitude_deg, site.longitude_deg, site.radius_m))
+        return [
+            row["run_id"]
+            for row in db.execute("SELECT run_id FROM runs WHERE orphaned > 0").fetchall()
+            if row["run_id"] in kept
+        ]
+
+    @staticmethod
+    def _remove_runs(db: sqlite3.Connection, run_ids: Sequence[str]) -> list[str]:
+        for run_id in run_ids:
+            for table in ("readings", "ephemeris_chunks", "reused_samples"):
+                db.execute(f"DELETE FROM {table} WHERE run_id = ?", (run_id,))
+            db.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
+        return list(run_ids)
+
+    def _delete_run_files(self, run_ids: Sequence[str]) -> None:
+        for run_id in run_ids:
+            shutil.rmtree(self.directory / run_id, ignore_errors=True)
 
     def list_runs(self, limit: int = 30) -> list[RunStatus]:
         """The most recently submitted runs first, whatever their state."""
         with self._connection() as db:
-            rows = db.execute("SELECT * FROM runs ORDER BY submitted DESC LIMIT ?", (limit,)).fetchall()
-            return [self._status(db, row) for row in rows]
+            rows = db.execute(
+                "SELECT * FROM runs WHERE orphaned = 0 ORDER BY submitted DESC LIMIT ?", (limit,)
+            ).fetchall()
+            # Long runs have thousands of ready snapshots; the list only needs their progress.
+            return [self._status(db, row, include_ready=False) for row in rows]
 
     def beat(self, pid: int) -> None:
         """Report that the worker is alive. Called every few seconds, even during long batches."""
@@ -226,7 +425,7 @@ class RunQueue:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
                 """
-                SELECT * FROM runs AS run WHERE stage IN ('queued', 'running')
+                SELECT * FROM runs AS run WHERE stage IN ('queued', 'running') AND orphaned = 0
                 ORDER BY EXISTS (
                     SELECT 1 FROM readings
                     WHERE run_id = run.run_id AND sample_index = run.priority_index
@@ -251,13 +450,17 @@ class RunQueue:
             if playhead_only:
                 indices = (priority,)
             else:
-                remaining = (
-                    index for index in range(plan.interval_count + 1) if index not in computed
+                # Published snapshots first, then the samples between them, each in time order.
+                missing_frames = (
+                    index for index in range(0, plan.interval_count + 1, plan.stride) if index not in computed
                 )
-                frame_first = sorted(
-                    remaining, key=lambda index: (not plan.is_frame(index), index)
+                missing_between = (
+                    index for index in range(plan.interval_count + 1)
+                    if index not in computed and not plan.is_frame(index)
                 )
-                indices = tuple(frame_first[:batch_size])
+                indices = tuple(islice(missing_frames, batch_size))
+                if len(indices) < batch_size:
+                    indices += tuple(islice(missing_between, batch_size - len(indices)))
 
             db.execute(
                 """
@@ -271,6 +474,8 @@ class RunQueue:
 
     def record(self, batch: WorkBatch, index: int, reading: Reading) -> None:
         with self._connection() as db:
+            if self._find(db, batch.run_id) is None:
+                raise RunRemoved(batch.run_id)
             inserted = db.execute(
                 "INSERT OR IGNORE INTO readings VALUES (?, ?, ?, ?)",
                 (batch.run_id, index, batch.plan.is_frame(index), reading.model_dump_json()),
@@ -328,9 +533,14 @@ class RunQueue:
                 "SELECT provenance FROM ephemeris_chunks WHERE run_id = ? ORDER BY start_index",
                 (run_id,),
             )
+            reused = db.execute(
+                "SELECT from_run_id, samples FROM reused_samples WHERE run_id = ? ORDER BY from_run_id",
+                (run_id,),
+            )
             return Provenance(
                 plan=RunPlan.model_validate_json(row["plan"]),
                 ephemeris_chunks=[EphemerisChunk.model_validate_json(chunk[0]) for chunk in chunks],
+                reused_samples=[ReusedSamples(from_run_id=item[0], samples=item[1]) for item in reused],
             )
 
     def complete(self, run_id: str, period: PeriodSummary) -> None:
@@ -352,7 +562,7 @@ class RunQueue:
         return db.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
 
     @staticmethod
-    def _status(db: sqlite3.Connection, row: sqlite3.Row) -> RunStatus:
+    def _status(db: sqlite3.Connection, row: sqlite3.Row, *, include_ready: bool = True) -> RunStatus:
         plan = RunPlan.model_validate_json(row["plan"])
         samples = [
             item[0]
@@ -360,7 +570,7 @@ class RunQueue:
                 "SELECT sample_index FROM readings WHERE run_id = ? AND is_frame = 1 ORDER BY sample_index",
                 (row["run_id"],),
             )
-        ]
+        ] if include_ready else []
         return RunStatus(
             run_id=row["run_id"],
             stage=row["stage"],
@@ -375,3 +585,12 @@ class RunQueue:
             message=row["message"],
             submitted_utc=datetime.fromtimestamp(row["submitted"] / 1e9, UTC),
         )
+
+
+def _same_site(plan: RunPlan, latitude_deg: float, longitude_deg: float, radius_m: float) -> bool:
+    site = plan.site
+    return (
+        abs(site.latitude_deg - latitude_deg) < 1e-9
+        and abs(site.longitude_deg - longitude_deg) < 1e-9
+        and site.radius_m == radius_m
+    )

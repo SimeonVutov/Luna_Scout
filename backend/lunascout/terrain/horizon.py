@@ -86,6 +86,29 @@ def build_horizons(terrain: Terrain, origins_m: FloatArray) -> HorizonMap:
     return HorizonMap(elevation_rad, complete, east, north, up)
 
 
+def site_label(latitude_deg: float, longitude_deg: float, radius_m: float) -> str:
+    """The text stored in a cached map so it can be found again when its site is deleted."""
+    return f"{latitude_deg:.9f},{longitude_deg:.9f},{radius_m:g}"
+
+
+def purge_horizons(cache_dir: Path, label: str) -> int:
+    """Delete the cached horizon maps built for one site; returns how many files were removed.
+
+    Maps saved before sites were labelled cannot be identified and are left alone.
+    """
+    removed = 0
+    for path in cache_dir.glob("*.npz"):
+        try:
+            with np.load(path, allow_pickle=False) as saved:
+                matches = "site_label" in saved.files and str(saved["site_label"]) == label
+        except (OSError, ValueError):
+            continue
+        if matches:
+            path.unlink(missing_ok=True)
+            removed += 1
+    return removed
+
+
 def read_cached_horizons(
     terrain: Terrain, origins_m: FloatArray, cache_dir: Path
 ) -> HorizonMap | None:
@@ -95,15 +118,18 @@ def read_cached_horizons(
 
 
 def load_or_build_horizons(
-    terrain: Terrain, origins_m: FloatArray, cache_dir: Path
+    terrain: Terrain, origins_m: FloatArray, cache_dir: Path, label: str = ""
 ) -> HorizonMap:
-    """Reuse a cached horizon map for identical terrain and receivers, or build and save one."""
+    """Reuse a cached horizon map for identical terrain and receivers, or build and save one.
+
+    `label` names the site in the saved file so the map can be deleted with its site.
+    """
     cached = read_cached_horizons(terrain, origins_m, cache_dir)
     if cached is not None:
         return cached
 
     horizons = build_horizons(terrain, origins_m)
-    _write_cache(cache_dir / f"{_cache_key(terrain, origins_m)}.npz", horizons)
+    _write_cache(cache_dir / f"{_cache_key(terrain, origins_m)}.npz", horizons, label)
     return horizons
 
 
@@ -198,9 +224,9 @@ def _read_cache(path: Path, receiver_count: int) -> HorizonMap | None:
     return horizons
 
 
-def _write_cache(path: Path, horizons: HorizonMap) -> None:
+def _write_cache(path: Path, horizons: HorizonMap, label: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=path.parent) as staging:
         staged_path = Path(staging) / path.name
-        np.savez_compressed(staged_path, **vars(horizons))
+        np.savez_compressed(staged_path, site_label=np.array(label), **vars(horizons))
         staged_path.replace(path)

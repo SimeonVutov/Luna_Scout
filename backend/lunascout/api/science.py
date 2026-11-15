@@ -17,6 +17,7 @@ from ..jobs.plan import MissingScienceInputs, create_plan
 from ..jobs.scheduler import Provenance, RunList, RunQueue, RunStatus
 from ..simulation.engine import SimulationSettings
 from ..simulation.frames import SiteFootprint
+from ..terrain.horizon import purge_horizons, site_label
 from ..terrain.model import TerrainError
 from ..terrain.preview import PreviewScale, TerrainPreview, sample_preview
 from . import site_store
@@ -36,6 +37,12 @@ class GridPayload(BaseModel):
     visible_sun_fraction_upper: list[float | None]
     irradiance_lower_w_m2: list[float | None]
     irradiance_upper_w_m2: list[float | None]
+
+
+class PurgeResult(BaseModel):
+    runs_removed: int
+    runs_kept: int
+    horizon_maps_removed: int
 
 
 class FramePayload(BaseModel):
@@ -88,6 +95,25 @@ def science_router(data_dir: Path, queue: RunQueue) -> APIRouter:
     def list_runs(limit: Annotated[int, Query(ge=1, le=100)] = 30) -> RunList:
         """Recent runs and the worker's state, so the dashboard can show what is happening."""
         return RunList(worker=queue.worker_status(), runs=queue.list_runs(limit))
+
+    @router.delete("/runs/site")
+    def purge_site_data(
+        latitude_deg: float, longitude_deg: float, radius_m: float, keep: bool = False
+    ) -> PurgeResult:
+        """Free the space a deleted site used.
+
+        With `keep`, the results and horizon maps are retained so the site can be restored when
+        it comes back, and a restore later discards whatever falls outside its timeline. Without
+        it, everything of the site is removed.
+        """
+        if keep:
+            return PurgeResult(
+                runs_removed=0, runs_kept=queue.keep_site(latitude_deg, longitude_deg, radius_m), horizon_maps_removed=0
+            )
+
+        runs = queue.purge_site(latitude_deg, longitude_deg, radius_m)
+        maps = purge_horizons(data_dir / "cache" / "horizons", site_label(latitude_deg, longitude_deg, radius_m))
+        return PurgeResult(runs_removed=runs, runs_kept=0, horizon_maps_removed=maps)
 
     @router.put("/runs/priority", status_code=204)
     def prioritize(spec: RunPriority) -> None:

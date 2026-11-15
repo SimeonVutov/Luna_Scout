@@ -4,7 +4,7 @@ import argparse
 import logging
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -31,17 +31,20 @@ from ..simulation.engine import (
 )
 from ..simulation.events import centre_windows
 from ..simulation.frames import SiteFootprint
-from ..terrain.horizon import HorizonMap, load_or_build_horizons, read_cached_horizons
+from ..terrain.horizon import HorizonMap, load_or_build_horizons, read_cached_horizons, site_label
 from ..terrain.model import TerrainError, prepare_terrain
 from .metrics import Reading, integrate
 from .plan import MODEL_REVISION, MissingScienceInputs, RunPlan, science_sources
-from .scheduler import EphemerisChunk, RunQueue, WorkBatch
+from .scheduler import EphemerisChunk, RunQueue, RunRemoved, WorkBatch
 
-_BATCH_SIZE = 3
+# A batch is long enough to amortise preparing a site's terrain when several sites take turns.
+_BATCH_SIZE = 96
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parents[3] / "DATA"
 # Waits before retrying a run whose Horizons request failed transiently.
 _HORIZONS_RETRY_DELAYS_S = (15, 60, 180)
-_HORIZON_MAPS_IN_MEMORY = 2
+_HORIZON_MAPS_IN_MEMORY = 6
+# Results kept for a deleted reference site are dropped if the site does not return in this time.
+KEPT_RESULTS_LIFETIME = timedelta(days=14)
 logger = logging.getLogger(__name__)
 
 SourceRevision = tuple[tuple[str, str], ...]
@@ -134,7 +137,11 @@ class Worker:
                 return None
             started = perf_counter()
             self.queue.set_activity(run_id, "Building terrain horizons (one time per site, about a minute)")
-            horizons = load_or_build_horizons(terrain, origins_m, self.horizon_cache_dir)
+            site = plan.site
+            horizons = load_or_build_horizons(
+                terrain, origins_m, self.horizon_cache_dir,
+                site_label(site.latitude_deg, site.longitude_deg, site.radius_m),
+            )
             logger.info(
                 "Built terrain horizons for %d receivers in %.1f s",
                 len(origins_m),
@@ -204,6 +211,9 @@ def main() -> None:
 
     queue = RunQueue(args.data_dir)
     queue.initialize()
+    removed = queue.prune_kept(KEPT_RESULTS_LIFETIME)
+    if removed:
+        logger.info("Removed %d kept runs of sites that were deleted more than %s ago.", removed, KEPT_RESULTS_LIFETIME)
     worker = Worker(args.data_dir, queue)
     horizons_retries: dict[str, int] = {}
     lock = FileLock(queue.directory / "worker.lock", timeout=0)
@@ -225,6 +235,10 @@ def main() -> None:
                     worker.process(batch)
                     queue.set_activity(None, None)
                     horizons_retries.pop(batch.run_id, None)
+                except RunRemoved:
+                    # The run was deleted with its site while this batch was computing.
+                    logger.info("Run %.12s was removed; dropping its remaining work.", batch.run_id)
+                    queue.set_activity(None, None)
                 except HorizonsUnavailable as exc:
                     # Saved samples stay recorded, so a later attempt resumes the run.
                     attempt = horizons_retries.get(batch.run_id, 0)

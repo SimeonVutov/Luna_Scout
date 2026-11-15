@@ -16,7 +16,8 @@ from ..terrain.model import LOCAL_DEM_NAMES, REGIONAL_DEM_NAMES
 # Change this when the solver or output meaning changes so old runs stay immutable.
 MODEL_REVISION = 4
 DEFAULT_INTEGRATION_MINUTES = 15
-MAX_INTERVALS = 10_000
+# One year at the default 15 minute cadence is 35,040 intervals.
+MAX_INTERVALS = 40_000
 
 
 class MissingScienceInputs(RuntimeError):
@@ -68,6 +69,15 @@ class RunPlan(BaseModel):
 
     def identity(self) -> str:
         return hashlib.sha256(self.model_dump_json().encode()).hexdigest()
+
+    def physics_key(self) -> str:
+        """Identity of everything except the dates.
+
+        Runs with the same key compute identical samples at identical times, so a run over a
+        longer or shorter range can reuse the samples of another instead of repeating them.
+        """
+        everything_but_dates = self.model_dump_json(exclude={"start_utc", "end_utc"})
+        return hashlib.sha256(everything_but_dates.encode()).hexdigest()
 
 
 def create_plan(
