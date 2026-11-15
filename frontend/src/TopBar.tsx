@@ -4,6 +4,7 @@ import type { useActivity } from "./features/activity/useActivity";
 import type { CatalogState } from "./features/sites/useSiteCatalog";
 import { usesApiCatalog } from "./features/sites/siteCatalog";
 import { Icon } from "./Icon";
+import { Logo } from "./Logo";
 
 export type Mode = "single" | "compare";
 /** The Moon in 3D (the default) or the flat south-polar map. */
@@ -33,8 +34,8 @@ export function TopBar(props: TopBarProps) {
 
   return <header className="topbar">
     <div className="brand">
-      <span className="brand-mark"><Icon name="moon" size={24} /></span>
-      <div><h1>LunaScout</h1><p>Lunar landing sites</p></div>
+      <Logo />
+      <h1 className="wordmark">Luna<span>Scout</span></h1>
     </div>
 
     <div className="topbar-center">

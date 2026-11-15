@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 
 const paths = {
-  moon: <><circle cx="12" cy="12" r="8.5" /><path d="M9 6.5c-2 3.5-2 7.5.4 11.1M5 12h5m5-.5h3m-3 4h2" /><circle cx="14.5" cy="8.5" r=".65" fill="currentColor" stroke="none" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
   pin: <><path d="M19 10c0 5.4-7 10-7 10s-7-4.6-7-10a7 7 0 1 1 14 0z" /><circle cx="12" cy="10" r="2.2" /></>,
   chevron: <path d="m8 10 4 4 4-4" />,
