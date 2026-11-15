@@ -37,6 +37,7 @@ export function SelectedTimeMetrics({ reading, run, at }: { reading: Reading; ru
     <div><dt>Sun at centre</dt><dd className={states.sunState === "clear" ? "visible-value" : ""}>{states.sun}</dd></div>
     <div><dt>Earth at {run?.plan.settings?.mast_height_m ?? 2} m mast</dt><dd className={states.earthState === "clear" ? "visible-value" : ""}>{states.earth}</dd></div>
     <div><dt>Earth disk visible</dt><dd>{bound(reading.earth_disk_visible_fraction, ratio)}</dd></div>
+    {summary.earth_visible_area_fraction && <div><dt>Area seeing ≥ half of Earth</dt><dd>{bound(summary.earth_visible_area_fraction, ratio)}</dd></div>}
     <div><dt>Sun elevation</dt><dd>{reading.sun_at_collector ? `${decimal.format(reading.sun_at_collector.elevation_deg)}°` : "—"}</dd></div>
     <div><dt>Earth elevation</dt><dd>{reading.earth_at_mast ? `${decimal.format(reading.earth_at_mast.elevation_deg)}°` : "—"}</dd></div>
     {summary.sun_resolved_area_fraction < 0.999 && <div><dt>Resolved footprint</dt><dd>{ratio.format(summary.sun_resolved_area_fraction)}</dd></div>}
@@ -57,6 +58,7 @@ export function StatTiles({ reading, run, at, insight }: { reading: Reading | nu
     { label: "Sun at centre", value: states.sun, tone: states.sunState === "clear" ? "good" : undefined },
     { label: "Earth at mast", value: states.earth, tone: states.earthState === "clear" ? "good" : undefined },
     { label: "Earth disk", value: bound(reading.earth_disk_visible_fraction, ratio) },
+    ...(summary.earth_visible_area_fraction ? [{ label: "Area seeing Earth", value: bound(summary.earth_visible_area_fraction, ratio) }] : []),
     ...(insight ? [{ label: "Terrain", value: detailLabel(insight.summary), tone: terrainQuality(insight.summary) === "fine" ? undefined : "warn" as const }] : []),
   ];
   return <dl className="stat-tiles">

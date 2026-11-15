@@ -56,6 +56,8 @@ export type Reading = {
     mean_irradiance_on_known_ground_w_m2: Bounds | null;
     half_disk_lit_area_fraction?: Bounds | null;
     usable_area_fraction?: Bounds | null;
+    /** Share of the site with at least half of Earth's disk in line of sight from mast height. */
+    earth_visible_area_fraction?: Bounds | null;
   };
 };
 
@@ -121,16 +123,43 @@ export type SunlightGrid = {
   visible_sun_fraction_upper: (number | null)[];
   irradiance_lower_w_m2: (number | null)[];
   irradiance_upper_w_m2: (number | null)[];
+  /** Fraction of Earth's disk in line of sight from mast height; absent from older results. */
+  earth_visible_fraction_lower?: (number | null)[] | null;
+  earth_visible_fraction_upper?: (number | null)[] | null;
 };
 
 export type FramePayload = { reading: Reading; grid: SunlightGrid };
 
-export type TerrainPreview = {
-  offsets_m: number[];
-  heights_m: (number | null)[];
-  center_height_m: number | null;
-  sources: string[];
-  dem_spacings_m: number[];
+/** Moon-fixed Cartesian components: +Z north, +X longitude 0, +Y longitude 90°E. */
+export type Vector = [number, number, number];
+
+/** Moon-centred Sun and Earth positions at one time, in metres. */
+export type SkySample = { at_utc: string; sun_m: Vector; earth_m: Vector };
+export type SkyBatch = { first_index: number; frame: string; samples: SkySample[] };
+
+/** The simulation's rays from one instrument toward a body's disk. Lists share the ray order. */
+export type RayFan = {
+  origin_m: Vector;
+  body_m: Vector;
+  directions: Vector[];
+  statuses: Visibility[];
+  /** Distance to the terrain that blocks the ray; null when clear or not resolved. */
+  hit_distances_m: (number | null)[];
+  visible_fraction: Bounds;
+};
+
+/** Rays from a subset of a site's points, as saved with a simulation snapshot. */
+export type RunRays = { at_utc: string; sun_points: RayFan[]; earth_points: RayFan[] };
+
+/** The Sun's disk seen from the collector and Earth's disk seen from the mast, at the site centre. */
+export type SiteRays = {
+  at_utc: string;
+  sun: RayFan;
+  earth: RayFan;
+  /** Sun fans from a subset of the site's reporting points; empty unless the whole site was asked for. */
+  sun_points: RayFan[];
+  /** Earth fans from the same points at mast height; empty unless the whole site was asked for. */
+  earth_points: RayFan[];
 };
 
 export type TerrainSummary = {

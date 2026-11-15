@@ -3,7 +3,7 @@ import Static from "ol/source/ImageStatic";
 import proj4 from "proj4";
 import type { Site, SlopeGrid, SunlightGrid } from "../../api/types";
 import { slopeClass } from "../results/slopeColors";
-import { sunlightClass, sunlightColors } from "../results/sunlightColors";
+import { earthClass, earthColors, sunlightClass, sunlightColors } from "../results/sunlightColors";
 
 export const MOON_RADIUS_M = 1_737_400;
 
@@ -18,6 +18,20 @@ export function sunlightOverlay(site: Site, grid: SunlightGrid) {
   });
 }
 
+/** Earth line of sight from mast height, as map overlay. */
+export function earthOverlay(site: Site, grid: SunlightGrid) {
+  return gridOverlay(site, grid.offsets_m, earthPaint(grid, 149));
+}
+
+function earthPaint(grid: SunlightGrid, alpha: number): Paint {
+  return (index) => {
+    const category = earthClass(grid, index);
+    if (!category) return null;
+    const [red, green, blue] = earthColors[category];
+    return [red, green, blue, alpha];
+  };
+}
+
 export function slopeOverlay(site: Site, grid: SlopeGrid) {
   return gridOverlay(site, grid.offsets_m, (index) => {
     const slope = grid.slope_deg[index];
@@ -27,8 +41,26 @@ export function slopeOverlay(site: Site, grid: SlopeGrid) {
   });
 }
 
-/** Paint one image pixel per reporting point, clipped to the site circle, on the lunar map. */
-function gridOverlay(site: Site, offsets: number[], paint: Paint) {
+/** The simulation's sunlight grid as a picture, for drawing on the 3D terrain. */
+export function sunlightCanvas(site: Site, grid: SunlightGrid) {
+  return gridCanvas(site, grid.offsets_m, (index) => {
+    const category = sunlightClass(grid, index);
+    if (!category) return null;
+    const [red, green, blue] = sunlightColors[category];
+    return [red, green, blue, 255];
+  });
+}
+
+/** Earth line of sight as a picture for the 3D terrain, like `sunlightCanvas`. */
+export function earthCanvas(site: Site, grid: SunlightGrid) {
+  return gridCanvas(site, grid.offsets_m, earthPaint(grid, 255));
+}
+
+/**
+ * Paint one image pixel per reporting point, clipped to the site circle, with north at the top.
+ * `halfWidthM` is the distance from the site centre to the picture's edge.
+ */
+function gridCanvas(site: Site, offsets: number[], paint: Paint) {
   const size = offsets.length;
   const spacing = size > 1 ? offsets[1] - offsets[0] : 2 * site.radius_m;
   const canvas = document.createElement("canvas");
@@ -49,6 +81,13 @@ function gridOverlay(site: Site, offsets: number[], paint: Paint) {
   context.beginPath();
   context.arc(size / 2, size / 2, site.radius_m / spacing, 0, 2 * Math.PI);
   context.fill();
+  return { canvas, halfWidthM: offsets[size - 1] + spacing / 2 };
+}
+
+/** Place a painted grid on the lunar map. */
+function gridOverlay(site: Site, offsets: number[], paint: Paint) {
+  const painted = gridCanvas(site, offsets, paint);
+  if (!painted) return null;
 
   // The solver's east/north offsets are a spherical azimuthal equidistant grid.
   // OpenLayers reprojects it onto the lunar stereographic imagery as the map moves.
@@ -57,11 +96,10 @@ function gridOverlay(site: Site, offsets: number[], paint: Paint) {
     proj4.defs(projection, `+proj=aeqd +lat_0=${site.latitude_deg} +lon_0=${site.longitude_deg} +R=${MOON_RADIUS_M} +units=m`);
     register(proj4);
   }
-  const minimum = offsets[0] - spacing / 2;
-  const maximum = offsets[size - 1] + spacing / 2;
+  const { canvas, halfWidthM } = painted;
   return new Static({
     projection,
-    imageExtent: [minimum, minimum, maximum, maximum],
+    imageExtent: [-halfWidthM, -halfWidthM, halfWidthM, halfWidthM],
     url: canvas.toDataURL(),
     interpolate: false,
   });

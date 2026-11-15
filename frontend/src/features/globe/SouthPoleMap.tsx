@@ -14,7 +14,8 @@ import proj4 from "proj4";
 import type { Coordinate, Site, SiteSpec, SlopeGrid, SunlightGrid } from "../../api/types";
 import { SlopeLegend } from "../results/SlopeLegend";
 import { SunlightLegend } from "../results/SunlightLegend";
-import { slopeOverlay, sunlightOverlay } from "./sunlightOverlay";
+import { EarthLegend } from "../results/EarthLegend";
+import { earthOverlay, slopeOverlay, sunlightOverlay } from "./sunlightOverlay";
 import { coverageFeatures } from "./terrainCoverage";
 import { MapCompass } from "./MapCompass";
 import type { Orientation } from "./MapCompass";
@@ -22,7 +23,7 @@ import { detailExtent, detailLayer, edge, geographic, globalExtent, globalImager
 import "ol/ol.css";
 
 type MapMode = "south" | "global";
-export type MapLayer = "sunlight" | "slope" | "none";
+export type MapLayer = "sunlight" | "earth" | "slope" | "none";
 
 function createView(mode: MapMode) {
   if (mode === "global") {
@@ -129,14 +130,16 @@ export function SouthPoleMap(props: Props) {
 
   const { sites, selectedId, draft, sunlight, slope, layer, cameraTarget, showCoverage } = props;
   const selectedSite = sites.find((site) => site.id === selectedId);
-  const overlayShown = layer === "sunlight" ? sunlight !== null : layer === "slope" ? slope !== null : false;
+  const hasEarth = sunlight?.earth_visible_fraction_lower != null;
+  const overlayShown = layer === "sunlight" ? sunlight !== null : layer === "earth" ? hasEarth : layer === "slope" ? slope !== null : false;
   useEffect(() => { coverage.setVisible(showCoverage); }, [coverage, showCoverage]);
   useEffect(() => {
     let image = null;
     if (selectedSite && layer === "sunlight" && sunlight) image = sunlightOverlay(selectedSite, sunlight);
+    if (selectedSite && layer === "earth" && sunlight && hasEarth) image = earthOverlay(selectedSite, sunlight);
     if (selectedSite && layer === "slope" && slope) image = slopeOverlay(selectedSite, slope);
     overlay.setSource(image);
-  }, [overlay, selectedSite, sunlight, slope, layer]);
+  }, [overlay, selectedSite, sunlight, slope, layer, hasEarth]);
   useEffect(() => {
     source.clear();
     for (const site of [...sites, ...(draft ? [{ ...draft, id: null }] : [])]) {
@@ -188,6 +191,11 @@ export function SouthPoleMap(props: Props) {
         {sunlight && <button className="button secondary" type="button" aria-pressed={layer === "sunlight"} onClick={() => props.onLayerChange(layer === "sunlight" ? "none" : "sunlight")}>
           Solar visibility
         </button>}
+        {hasEarth && <button className="button secondary" type="button" aria-pressed={layer === "earth"}
+          title="Which points can see Earth from mast height: geometric line of sight, not signal strength."
+          onClick={() => props.onLayerChange(layer === "earth" ? "none" : "earth")}>
+          Earth radio coverage
+        </button>}
         {slope && <button className="button secondary" type="button" aria-pressed={layer === "slope"} onClick={() => props.onLayerChange(layer === "slope" ? "none" : "slope")}>
           Slope
         </button>}
@@ -196,6 +204,7 @@ export function SouthPoleMap(props: Props) {
         </button>}
       </div>
       {layer === "sunlight" && sunlight && <SunlightLegend />}
+      {layer === "earth" && hasEarth && <EarthLegend />}
       {layer === "slope" && slope && <SlopeLegend />}
       {showCoverage && mode === "south" && <div className="sunlight-legend" aria-label="Terrain data legend">
         <span><i style={{ background: "#e4c48c" }} />5 m grids (ten sites)</span>

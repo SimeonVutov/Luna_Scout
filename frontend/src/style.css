@@ -414,3 +414,24 @@ h1, h2, h3, h4, p { margin: 0; }
 .stage-chip.running { background: #273b3a; color: var(--accent); }
 .stage-chip.complete { background: #22332d; color: #8fd9b5; }
 .stage-chip.failed { background: #3b2a2a; color: #f2a08f; }
+
+.space-viewport { background: #05070b; }
+.space-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.space-label { position: absolute; top: 0; left: 0; translate: 12px -50%; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; pointer-events: auto; white-space: nowrap; color: #e7edf0; background: #181d24d9; border: 1px solid #363e48; border-radius: 5px; font-size: .66rem; }
+.space-label[hidden] { display: none; }
+.space-label i { display: none; font-style: normal; font-size: .6rem; }
+.space-label.off-screen { translate: -50% -50%; }
+.space-label.off-screen i { display: inline-block; }
+.space-label.sun { color: #ffd76a; border-color: #6b5a2a; }
+.space-label.earth { color: #8cc4ff; border-color: #2c4c70; }
+.space-label.behind { opacity: .6; border-style: dashed; }
+.space-label.behind span::after { content: " · hidden by the Moon"; }
+.space-label.site { translate: -50% calc(-100% - 9px); }
+.space-label.site.selected { color: var(--accent); border-color: #3c5753; }
+.space-layers { position: absolute; z-index: 1; top: 78px; left: 20px; display: grid; justify-items: start; gap: 6px; max-width: min(420px, calc(100% - 190px)); }
+.space-relief { display: flex; align-items: center; gap: 8px; padding: 5px 9px; color: #e7edf0; background: #161b23ec; border: 1px solid #36414b; border-radius: 6px; font-size: .69rem; }
+.space-relief input { width: 96px; accent-color: var(--accent); }
+.space-viewport .terrain-bottom p[role] { color: #f0d9a8; }
+@media (max-width: 760px) {
+  .space-layers { left: 12px; top: 70px; max-width: calc(100% - 24px); }
+}

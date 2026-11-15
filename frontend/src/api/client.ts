@@ -1,4 +1,4 @@
-import type { FramePayload, Reading, RunList, RunRequest, RunStatus, Site, SiteInsight, SiteSpec, TerrainPreview } from "./types";
+import type { FramePayload, Reading, RunList, RunRequest, RunStatus, RunRays, SimulationOptions, Site, SiteInsight, SiteRays, SiteSpec, SkyBatch, TimeRange } from "./types";
 
 /** A failed API call. `status` is null when the server could not be reached at all. */
 export class ApiError extends Error {
@@ -69,8 +69,31 @@ export function runSnapshot(id: string, index: number, signal: AbortSignal) {
   return send<FramePayload>(`/runs/${id}/snapshots/${index}`, "GET", undefined, signal);
 }
 
-export function terrainPreview(site: SiteSpec, scale: "site" | "region", signal: AbortSignal) {
-  return send<TerrainPreview>(`/terrain/preview?scale=${scale}`, "POST", site, signal);
+/** Sun and Earth positions for the batch of samples around sample `index` of a time range. */
+export function skyBatch(range: TimeRange, integrationMinutes: number, index: number, signal?: AbortSignal) {
+  const query = new URLSearchParams({
+    start_utc: range.start_utc, end_utc: range.end_utc,
+    integration_minutes: String(integrationMinutes), index: String(index),
+  });
+  return send<SkyBatch>(`/sky?${query}`, "GET", undefined, signal);
+}
+
+/** The rays of a published snapshot, saved by the worker with the frame. */
+export function runRays(id: string, index: number, signal: AbortSignal) {
+  return send<RunRays>(`/runs/${id}/rays/${index}`, "GET", undefined, signal);
+}
+
+/** The Sun and Earth disk rays at a site's centre for sample `index` of a time range. */
+export function siteRays(site: SiteSpec, range: TimeRange, options: SimulationOptions, index: number, wholeSite: boolean, signal: AbortSignal) {
+  return send<SiteRays>("/terrain/rays", "POST", {
+    site, start_utc: range.start_utc, end_utc: range.end_utc,
+    integration_minutes: options.integration_minutes, index,
+    solar_disk_samples: options.solar_disk_samples,
+    whole_site: wholeSite, grid_spacing_m: options.grid_spacing_m,
+    mast_height_m: options.mast_height_m,
+    // A terrain receiver lies on the ground, as in the simulation.
+    collector_height_m: options.receiver === "terrain" ? 0 : options.collector_height_m,
+  }, signal);
 }
 
 export function siteInsight(

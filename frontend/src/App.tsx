@@ -22,7 +22,7 @@ import { slotColor, slotLabel, slots } from "./features/compare/slots";
 import type { Slot } from "./features/compare/slots";
 import { snapshotAt, todayRange } from "./features/timeline/time";
 
-const TerrainView = lazy(() => import("./features/terrain/TerrainView").then((module) => ({ default: module.TerrainView })));
+const SpaceView = lazy(() => import("./features/space/SpaceView").then((module) => ({ default: module.SpaceView })));
 
 const emptyDraft: SiteSpec = {
   name: "New site",
@@ -35,11 +35,12 @@ function errorText(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
 
-type Mode = "explore" | "compare";
+/** Explore and 3D show one site with its results; Compare shows two side by side. */
+type Mode = "explore" | "space" | "compare";
 type CompareView = "live" | "summary";
 
 export function App() {
-  const [mode, setMode] = useState<Mode>("explore");
+  const [mode, setMode] = useState<Mode>("space");
   const [compareView, setCompareView] = useState<CompareView>("live");
   const [compareIds, setCompareIds] = useState<Record<Slot, string | null>>({ a: null, b: null });
   const [sites, setSites] = useState<Site[]>([]);
@@ -50,10 +51,9 @@ export function App() {
   const [timeIndex, setTimeIndex] = useState(0);
   const [options, setOptions] = useState(defaultOptions);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [terrainMode, setTerrainMode] = useState(false);
-  const [visitedTerrain, setVisitedTerrain] = useState<string | null>(null);
+  // The 3D view is created on first use and then kept, so its loaded terrain survives mode changes.
+  const [spaceOpened, setSpaceOpened] = useState(true);
   const [mapLayer, setMapLayer] = useState<MapLayer>("sunlight");
-  const showSunlight = mapLayer === "sunlight";
   const [showCoverage, setShowCoverage] = useState(false);
   const [busy, setBusy] = useState(false);
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
@@ -81,7 +81,8 @@ export function App() {
   const activity = useActivity();
   const siteRuns = Object.fromEntries(sites.map((site) => [site.id, science.status(site)]));
   const phases: Record<string, string | null> = activity.list?.worker.run_id ? { [activity.list.worker.run_id]: activity.list.worker.activity } : {};
-  const exploring = mode === "explore";
+  const exploring = mode !== "compare";
+  const inSpace = mode === "space";
   const chosen: Record<Slot, Site | null> = {
     a: sites.find((site) => site.id === compareIds.a) ?? null,
     b: sites.find((site) => site.id === compareIds.b) ?? null,
@@ -100,11 +101,6 @@ export function App() {
   const selectedRun = science.status(selected);
   const selectedOutput = useRunOutput(exploring ? selectedRun : null, timeIndex);
   const series = useRunSeries(exploring ? selectedRun : null);
-  const showTerrain = terrainMode && selected !== null && !draft;
-  const terrainKey = selected ? `${selected.latitude_deg}/${selected.longitude_deg}/${selected.radius_m}` : null;
-  useEffect(() => {
-    if (showTerrain) setVisitedTerrain(terrainKey);
-  }, [showTerrain, terrainKey]);
   const sunlight = selectedOutput.frame?.grid ?? null;
   const submittedSites = exploring ? (selected ? [selected] : []) : slots.flatMap((slot) => chosen[slot] ?? []);
   const runnableSites = submittedSites.filter((site) => {
@@ -126,8 +122,10 @@ export function App() {
       const first = compareIds.a ?? selectedId;
       const second = compareIds.b ?? sites.find((site) => site.id !== first)?.id ?? null;
       setCompareIds({ a: first, b: second === first ? null : second });
-      setDraft(null);
     }
+    // A new site is placed on the 2D map, so a draft does not follow into the other modes.
+    if (next !== "explore") setDraft(null);
+    if (next === "space") setSpaceOpened(true);
     setMode(next);
   }
 
@@ -154,7 +152,6 @@ export function App() {
   }
 
   function flyTo(site: Site) {
-    setTerrainMode(false);
     setCameraTarget({ ...site });
   }
 
@@ -248,16 +245,13 @@ export function App() {
         </div>
         <div className="topbar-center">
           <div className="view-switch mode-switch" role="group" aria-label="Mode">
-            <button className="button secondary" type="button" aria-pressed={exploring} onClick={() => chooseMode("explore")}>Explore</button>
+            <button className="button secondary" type="button" aria-pressed={mode === "explore"} onClick={() => chooseMode("explore")}>Explore</button>
+            <button className="button secondary" type="button" aria-pressed={inSpace} title="The Moon, the Sun and Earth in 3D" onClick={() => chooseMode("space")}>3D view</button>
             <button className="button secondary" type="button" aria-pressed={!exploring} disabled={sites.length < 2} title={sites.length < 2 ? "Save two sites to compare them" : undefined} onClick={() => chooseMode("compare")}>Compare</button>
           </div>
           {!exploring && <div className="view-switch" role="group" aria-label="Comparison view">
             <button className="button secondary" type="button" aria-pressed={compareView === "live"} onClick={() => setCompareView("live")}>Live maps</button>
             <button className="button secondary" type="button" aria-pressed={compareView === "summary"} onClick={() => setCompareView("summary")}>Whole period</button>
-          </div>}
-          {exploring && <div className="view-switch" role="group" aria-label="Lunar view">
-            <button className="button secondary" type="button" aria-pressed={!showTerrain} onClick={() => setTerrainMode(false)}>Map</button>
-            <button className="button secondary" type="button" aria-pressed={showTerrain} disabled={!selected || selected.latitude_deg > -60 || !!draft} onClick={() => setTerrainMode(true)}>3D terrain</button>
           </div>}
         </div>
         <div className="topbar-end">
@@ -280,7 +274,7 @@ export function App() {
           sites={sites} selectedId={selectedId} draft={draft} busy={busy || catalogState !== "ready"}
           runs={siteRuns} phases={phases} workerRunning={activity.list ? activity.list.worker.running : null}
           onAdd={() => {
-            setTerrainMode(false);
+            setMode("explore");
             setDraft({ ...emptyDraft, name: `Site ${sites.length + 1}` });
           }}
           onDraft={setDraft} onSave={(site) => void save(site)} onSelect={selectSite}
@@ -298,16 +292,16 @@ export function App() {
             b: { site: chosen.b, run: compareRuns.b, reading: compareOutputs.b.frame?.reading ?? null, sunlight: compareOutputs.b.frame?.grid ?? null, insight: insightB.insight },
           }} />}
         <div className="viewport-stage" hidden={!exploring}>
-          <div className="stage-view" hidden={showTerrain}>
+          <div className="stage-view" hidden={inSpace}>
             <SouthPoleMap sites={sites} selectedId={selectedId} draft={activeDraft} picking={draft !== null}
               onPick={pick} onSelect={selectSite} cameraTarget={cameraTarget} sunlight={sunlight}
               slope={selectedInsight.insight?.slope_grid ?? null} layer={mapLayer} onLayerChange={setMapLayer}
               showCoverage={showCoverage} onShowCoverageChange={setShowCoverage} />
           </div>
-          {selected && (showTerrain || terrainKey === visitedTerrain) && <div className="stage-view" hidden={!showTerrain}>
-            <Suspense fallback={<div className="terrain-status" role="status">Opening 3D terrain…</div>}>
-              <TerrainView key={terrainKey} site={selected}
-                sunlight={sunlight} showSunlight={showSunlight} onToggleSunlight={() => setMapLayer(showSunlight ? "none" : "sunlight")} />
+          {spaceOpened && <div className="stage-view" hidden={!inSpace}>
+            <Suspense fallback={<div className="terrain-status" role="status">Opening the 3D view…</div>}>
+              <SpaceView active={inSpace} sites={sites} selected={selected} focus={cameraTarget} run={selectedRun}
+                range={range} timeIndex={timeIndex} options={options} sunlight={sunlight} onSelect={selectSite} />
             </Suspense>
           </div>}
         </div>
