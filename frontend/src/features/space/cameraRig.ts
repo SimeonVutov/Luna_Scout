@@ -1,5 +1,9 @@
-import { Matrix4, Quaternion, Vector3 } from "three";
+import { Quaternion, Vector3 } from "three";
 import type { PerspectiveCamera } from "three";
+import { attachCameraInput } from "./cameraInput";
+import { groundFrame, sampleFlight, startFlight } from "./cameraFlight";
+import { pickSphere } from "./cameraPick";
+import type { Flight, FlightPose } from "./cameraFlight";
 import { MOON_RADIUS_KM, unitToLatLon } from "./geodesy";
 
 const ORBIT_FOV_DEG = 45;
@@ -8,7 +12,14 @@ const MIN_DISTANCE_KM = 0.03;
 const MAX_DISTANCE_KM = 40_000;
 const MAX_TILT = 1.55;
 const MAX_PITCH = 1.45;
-const FLIGHT_MS = 900;
+/** Radians the view turns per pixel of a right-drag. */
+const TURN_PER_PIXEL = 0.005;
+/** Radians the view turns per pixel of an arrow-key nudge in stand mode. */
+const LOOK_PER_NUDGE_PX = 0.003;
+/** Upper limit on how far the ground moves per pixel while panning, in radians. */
+const MAX_PAN_PER_PIXEL = 0.0045;
+/** How strongly the wheel zooms: the distance or field of view scales by exp(k·scroll). */
+const ZOOM_PER_SCROLL_PX = 0.0012;
 
 export type RigMode = "orbit" | "stand";
 
@@ -34,17 +45,6 @@ export type Destination = {
   tilt: number;
 };
 
-type Flight = {
-  startedAt: number;
-  from: Quaternion;
-  to: Quaternion;
-  fromDistanceKm: number;
-  toDistanceKm: number;
-  fromTilt: number;
-  toTilt: number;
-  then?: () => void;
-};
-
 /**
  * Moves the camera around a Moon that never turns: the view stays attached to the ground and
  * the Sun and Earth move in the sky, so playing the timeline does not spin the scene.
@@ -66,14 +66,12 @@ export class CameraRig {
   eyeHeightKm = 0.002;
 
   private flight: Flight | null = null;
-  private drag: { pointer: number; x: number; y: number; turning: boolean } | null = null;
   private readonly right = new Vector3();
   private readonly target = new Vector3();
   private readonly scratch = new Vector3();
   private readonly scratch2 = new Vector3();
-  private readonly basis = new Matrix4();
-  private readonly frame = new Quaternion();
-  private readonly cleanup: () => void;
+  private readonly flightPose: FlightPose = { frame: new Quaternion(), distanceKm: 0, tilt: 0 };
+  private readonly stopInput: () => void;
 
   constructor(
     private readonly camera: PerspectiveCamera,
@@ -83,39 +81,16 @@ export class CameraRig {
     private readonly onChange: () => void,
   ) {
     camera.fov = ORBIT_FOV_DEG;
-    const down = (event: PointerEvent) => this.pointerDown(event);
-    const move = (event: PointerEvent) => this.pointerMove(event);
-    const release = (event: PointerEvent) => { if (this.drag?.pointer === event.pointerId) this.drag = null; };
-    const wheel = (event: WheelEvent) => this.wheel(event);
-    const double = (event: MouseEvent) => this.doubleClick(event);
-    const key = (event: KeyboardEvent) => this.key(event);
-    const menu = (event: Event) => event.preventDefault();
-    element.addEventListener("pointerdown", down);
-    element.addEventListener("pointermove", move);
-    element.addEventListener("pointerup", release);
-    element.addEventListener("pointercancel", release);
-    element.addEventListener("wheel", wheel, { passive: false });
-    element.addEventListener("dblclick", double);
-    element.addEventListener("keydown", key);
-    element.addEventListener("contextmenu", menu);
-    this.cleanup = () => {
-      element.removeEventListener("pointerdown", down);
-      element.removeEventListener("pointermove", move);
-      element.removeEventListener("pointerup", release);
-      element.removeEventListener("pointercancel", release);
-      element.removeEventListener("wheel", wheel);
-      element.removeEventListener("dblclick", double);
-      element.removeEventListener("keydown", key);
-      element.removeEventListener("contextmenu", menu);
-    };
+    this.stopInput = attachCameraInput(element, this);
   }
 
   dispose() {
-    this.cleanup();
+    this.stopInput();
   }
 
-  get flying() {
-    return this.flight !== null;
+  /** Cancel a flight in progress, such as when the user takes over. */
+  interrupt() {
+    this.flight = null;
   }
 
   /** Glide to a new orbit view. `then` runs on arrival. */
@@ -123,22 +98,15 @@ export class CameraRig {
     this.mode = "orbit";
     this.camera.fov = ORBIT_FOV_DEG;
     this.camera.updateProjectionMatrix();
-    const from = this.frameOf(this.up, this.forward, new Quaternion());
+    const from = { frame: groundFrame(this.up, this.forward, new Quaternion()), distanceKm: this.distanceKm, tilt: this.tilt };
 
     // Without a requested heading, carry the current one along the shortest turn to the new point.
     const up = destination.up.clone().normalize();
     const forward = destination.forward?.clone()
       ?? this.forward.clone().applyQuaternion(new Quaternion().setFromUnitVectors(this.up, up));
-    this.flight = {
-      startedAt: performance.now(),
-      from,
-      to: this.frameOf(up, forward, new Quaternion()),
-      fromDistanceKm: this.distanceKm,
-      toDistanceKm: destination.distanceKm,
-      fromTilt: this.tilt,
-      toTilt: destination.tilt,
-      then,
-    };
+    const to = { frame: groundFrame(up, forward, new Quaternion()), distanceKm: destination.distanceKm, tilt: destination.tilt };
+
+    this.flight = startFlight(from, to, then);
     this.onChange();
   }
 
@@ -179,16 +147,12 @@ export class CameraRig {
     const flight = this.flight;
     if (!flight) return false;
 
-    const progress = Math.min(1, (now - flight.startedAt) / FLIGHT_MS);
-    // Ease in and out: e = 3p² − 2p³.
-    const eased = progress * progress * (3 - 2 * progress);
-    this.frame.slerpQuaternions(flight.from, flight.to, eased);
-    this.up.set(0, 0, 1).applyQuaternion(this.frame);
-    this.forward.set(0, 1, 0).applyQuaternion(this.frame);
-    // Distances span many orders of magnitude, so they are interpolated as logarithms.
-    this.distanceKm = Math.exp(Math.log(flight.fromDistanceKm) + (Math.log(flight.toDistanceKm) - Math.log(flight.fromDistanceKm)) * eased);
-    this.tilt = flight.fromTilt + (flight.toTilt - flight.fromTilt) * eased;
-    if (progress < 1) return true;
+    const arrived = sampleFlight(flight, now, this.flightPose);
+    this.up.set(0, 0, 1).applyQuaternion(this.flightPose.frame);
+    this.forward.set(0, 1, 0).applyQuaternion(this.flightPose.frame);
+    this.distanceKm = this.flightPose.distanceKm;
+    this.tilt = this.flightPose.tilt;
+    if (!arrived) return true;
 
     this.flight = null;
     flight.then?.();
@@ -248,116 +212,90 @@ export class CameraRig {
 
   /** The unit direction of the ground under a screen point, or null when it shows space. */
   pick(clientX: number, clientY: number) {
-    const bounds = this.element.getBoundingClientRect();
-    const x = (clientX - bounds.left) / bounds.width * 2 - 1;
-    const y = 1 - (clientY - bounds.top) / bounds.height * 2;
-    const half = Math.tan(this.camera.fov * Math.PI / 360);
-    const elements = this.camera.matrixWorld.elements;
-    const ray = this.scratch.set(
-      elements[0] * x * half * this.camera.aspect + elements[4] * y * half - elements[8],
-      elements[1] * x * half * this.camera.aspect + elements[5] * y * half - elements[9],
-      elements[2] * x * half * this.camera.aspect + elements[6] * y * half - elements[10],
-    ).normalize();
-
-    // Ray–sphere intersection at the focus point's radius: t = −b − √(b² − (‖o‖² − r²)), b = o·v.
-    const origin = this.camera.position;
-    const radius = MOON_RADIUS_KM + this.groundKm(this.up);
-    const b = origin.dot(ray);
-    const discriminant = b * b - (origin.lengthSq() - radius * radius);
-    if (discriminant < 0) return null;
-    const distance = -b - Math.sqrt(discriminant);
-    return distance > 0 ? ray.multiplyScalar(distance).add(origin).normalize().clone() : null;
+    const radiusKm = MOON_RADIUS_KM + this.groundKm(this.up);
+    return pickSphere(this.camera, this.element.getBoundingClientRect(), clientX, clientY, radiusKm);
   }
 
-  private frameOf(up: Vector3, forward: Vector3, out: Quaternion) {
-    const levelled = forward.clone().addScaledVector(up, -forward.dot(up)).normalize();
-    this.basis.makeBasis(new Vector3().crossVectors(levelled, up), levelled, up);
-    return out.setFromRotationMatrix(this.basis);
-  }
-
-  private pointerDown(event: PointerEvent) {
-    this.element.setPointerCapture(event.pointerId);
-    this.element.focus({ preventScroll: true });
-    this.flight = null;
-    this.drag = { pointer: event.pointerId, x: event.clientX, y: event.clientY, turning: event.button !== 0 || event.ctrlKey || event.shiftKey };
-  }
-
-  private pointerMove(event: PointerEvent) {
-    const drag = this.drag;
-    if (!drag || drag.pointer !== event.pointerId) return;
-    const dx = event.clientX - drag.x;
-    const dy = event.clientY - drag.y;
-    drag.x = event.clientX;
-    drag.y = event.clientY;
-    if (!dx && !dy) return;
-
+  /** Move the view by a drag of `dx`, `dy` pixels: panning, turning and tilting, or looking around. */
+  drag(dx: number, dy: number, turning: boolean) {
     if (this.mode === "stand") {
       // Looking around: the scene follows the pointer, scaled so a point stays under it.
       const perPixel = this.camera.fov * Math.PI / 180 / this.element.clientHeight;
       this.forward.applyAxisAngle(this.up, dx * perPixel);
       this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch + dy * perPixel));
-    } else if (drag.turning) {
-      this.forward.applyAxisAngle(this.up, dx * 0.005);
-      this.tilt = Math.max(0, Math.min(MAX_TILT, this.tilt - dy * 0.005));
+    } else if (turning) {
+      this.forward.applyAxisAngle(this.up, dx * TURN_PER_PIXEL);
+      this.tilt = Math.max(0, Math.min(MAX_TILT, this.tilt - dy * TURN_PER_PIXEL));
     } else {
       this.pan(dx, dy);
     }
     this.onChange();
   }
 
-  /** Move the focus point so the ground follows the pointer by `dx`, `dy` pixels. */
-  private pan(dx: number, dy: number) {
-    // Ground angle per pixel: α = d·2·tan(fov/2)/(H·R), limited so the far view stays controllable.
-    const kmPerPixel = this.distanceKm * 2 * Math.tan(this.camera.fov * Math.PI / 360) / this.element.clientHeight;
-    const perPixel = Math.min(kmPerPixel / MOON_RADIUS_KM, 0.0045);
-    this.right.crossVectors(this.forward, this.up);
-    const aboutForward = this.scratch.copy(this.forward);
-    this.up.applyAxisAngle(aboutForward, -dx * perPixel);
-    const aboutRight = this.scratch.crossVectors(this.forward, this.up).negate().normalize();
-    this.up.applyAxisAngle(aboutRight, dy * perPixel).normalize();
-    this.forward.applyAxisAngle(aboutRight, dy * perPixel);
-  }
-
-  private wheel(event: WheelEvent) {
-    event.preventDefault();
+  /** Zoom by a scroll of `amount` pixels. In orbit mode the ground under the pointer stays in place. */
+  scroll(amount: number, clientX: number, clientY: number) {
     this.flight = null;
-    const scroll = event.deltaY * (event.deltaMode === 1 ? 16 : 1);
+
     if (this.mode === "stand") {
-      this.camera.fov = Math.max(8, Math.min(90, this.camera.fov * Math.exp(scroll * 0.0012)));
+      this.camera.fov = Math.max(8, Math.min(90, this.camera.fov * Math.exp(amount * ZOOM_PER_SCROLL_PX)));
       this.camera.updateProjectionMatrix();
       this.onChange();
       return;
     }
 
     const before = this.distanceKm;
-    this.distanceKm = Math.max(MIN_DISTANCE_KM, Math.min(MAX_DISTANCE_KM, before * Math.exp(scroll * 0.0012)));
+    this.distanceKm = Math.max(MIN_DISTANCE_KM, Math.min(MAX_DISTANCE_KM, before * Math.exp(amount * ZOOM_PER_SCROLL_PX)));
+
     // Zooming in pulls the focus toward the ground under the pointer, keeping it in place.
-    const under = this.distanceKm < before ? this.pick(event.clientX, event.clientY) : null;
+    const under = this.distanceKm < before ? this.pick(clientX, clientY) : null;
     if (under) {
-      const turn = new Quaternion().slerpQuaternions(new Quaternion(), new Quaternion().setFromUnitVectors(this.up, under), 1 - this.distanceKm / before);
+      const toward = new Quaternion().setFromUnitVectors(this.up, under);
+      const turn = new Quaternion().slerpQuaternions(new Quaternion(), toward, 1 - this.distanceKm / before);
       this.up.applyQuaternion(turn).normalize();
       this.forward.applyQuaternion(turn);
     }
     this.onChange();
   }
 
-  private doubleClick(event: MouseEvent) {
+  /** Fly closer to the ground under a screen point. Only in orbit mode. */
+  flyCloserTo(clientX: number, clientY: number) {
     if (this.mode !== "orbit") return;
-    const under = this.pick(event.clientX, event.clientY);
+
+    const under = this.pick(clientX, clientY);
     if (under) this.flyTo({ up: under, distanceKm: Math.max(MIN_DISTANCE_KM, this.distanceKm / 2.5), tilt: this.tilt });
   }
 
-  private key(event: KeyboardEvent) {
-    const step = event.shiftKey ? 120 : 40;
-    const moves: Record<string, [number, number]> = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
-    const move = moves[event.key];
-    if (move && this.mode === "orbit") this.pan(...move);
-    else if (move) this.forward.applyAxisAngle(this.up, move[0] * 0.003);
-    else if (event.key === "+" || event.key === "=") this.distanceKm = Math.max(MIN_DISTANCE_KM, this.distanceKm / 1.3);
-    else if (event.key === "-") this.distanceKm = Math.min(MAX_DISTANCE_KM, this.distanceKm * 1.3);
-    else return;
-    event.preventDefault();
+  /** Move the view by `dx`, `dy` pixels' worth, as a key press does. */
+  nudge(dx: number, dy: number) {
     this.flight = null;
+
+    if (this.mode === "orbit") this.pan(dx, dy);
+    else this.forward.applyAxisAngle(this.up, dx * LOOK_PER_NUDGE_PX);
     this.onChange();
+  }
+
+  /** Move the camera closer (factor below 1) or farther (above 1). */
+  scaleDistance(factor: number) {
+    this.flight = null;
+    this.distanceKm = Math.max(MIN_DISTANCE_KM, Math.min(MAX_DISTANCE_KM, this.distanceKm * factor));
+    this.onChange();
+  }
+
+  /** Move the focus point so the ground follows the pointer by `dx`, `dy` pixels. */
+  private pan(dx: number, dy: number) {
+    // Ground angle per pixel: α = min(d·2·tan(φ/2)/(H·R), α_max)
+    //   α - Angle the focus point moves per pixel, in radians; d - camera distance, in km.
+    //   φ - Vertical field of view; H - viewport height, in pixels; R - lunar radius, in km.
+    //   α_max - Limit that keeps the view of the whole Moon controllable.
+    const kmPerPixel = this.distanceKm * 2 * Math.tan(this.camera.fov * Math.PI / 360) / this.element.clientHeight;
+    const perPixel = Math.min(kmPerPixel / MOON_RADIUS_KM, MAX_PAN_PER_PIXEL);
+
+    this.right.crossVectors(this.forward, this.up);
+    const aboutForward = this.scratch.copy(this.forward);
+    this.up.applyAxisAngle(aboutForward, -dx * perPixel);
+
+    const aboutRight = this.scratch.crossVectors(this.forward, this.up).negate().normalize();
+    this.up.applyAxisAngle(aboutRight, dy * perPixel).normalize();
+    this.forward.applyAxisAngle(aboutRight, dy * perPixel);
   }
 }
