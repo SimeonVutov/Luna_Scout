@@ -15,9 +15,10 @@ from lunascout.simulation.engine import SimulationSettings, calculate_snapshot
 from lunascout.simulation.frames import SiteFootprint, local_axes, site_directions
 from lunascout.simulation.radiation import (
     AU_M,
-    _disk_directions,
+    SUN_RADIUS_M,
     _earth_occultation_mask,
     direct_sunlight,
+    disk_directions,
 )
 from lunascout.terrain import mesh
 from lunascout.terrain.model import prepare_terrain
@@ -47,11 +48,12 @@ def test_earth_occultation_requires_forward_intersection_before_sun():
 
 
 @pytest.mark.parametrize("direction", [[1., 0, 0], [0., 0, 1]])
-def test_single_disk_ray_uses_center_and_nominal_flux(direction):
+def test_single_disk_ray_uses_center(direction):
     sun_vector = np.array([direction]) * AU_M
-    rays, flux = _disk_directions(sun_vector, np.zeros(1), np.ones(1), np.zeros(1))
-    np.testing.assert_allclose(rays[0, 0], direction)
-    np.testing.assert_allclose(flux, [1361.])
+    disk = disk_directions(sun_vector, SUN_RADIUS_M, 1)
+    np.testing.assert_allclose(disk.directions[0, 0], direction)
+    np.testing.assert_allclose(disk.separation_cos, [[1.]])
+    np.testing.assert_allclose(disk.distances_m, [AU_M])
 
 
 class _ConstantTerrain:
@@ -152,8 +154,17 @@ def test_saved_shackleton_snapshot_matches_all_grid_arrays():
         sun_m=np.array(archived["sun_m"]), earth_m=np.array(archived["earth_m"]),
     )
     site = SiteFootprint(**report["site"])
-    terrain = prepare_terrain(data_dir, site)
-    snapshot = calculate_snapshot(site, ephemeris, terrain, SimulationSettings(**report["settings"]))
+
+    # The fixture predates the extra 5 m tiles and the receiver presets, so rebuild
+    # it from exactly the inputs it recorded: its two local DEMs and the terrain facet.
+    local_dems = [
+        data_dir / "raw" / "terrain" / source["filename"]
+        for source in report["terrain"]["sources"]
+        if "_5mpp_" in source["filename"]
+    ]
+    terrain = prepare_terrain(data_dir, site, local_dems=local_dems)
+    settings = SimulationSettings(**report["settings"], receiver="terrain")
+    snapshot = calculate_snapshot(site, ephemeris, terrain, settings)
 
     assert snapshot.summary.sample_count == 1961
     assert snapshot.summary.lit_area_fraction.lower == pytest.approx(0.958694543811824)
