@@ -2,14 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import Feature from "ol/Feature";
 import Map from "ol/Map";
 import View from "ol/View";
-import { Circle, Point, Polygon } from "ol/geom";
+import { Point } from "ol/geom";
 import { siteFootprint } from "./mapCoordinates";
 import ImageLayer from "ol/layer/Image";
 import TileLayer from "ol/layer/Tile";
 import VectorLayer from "ol/layer/Vector";
 import { getPointResolution } from "ol/proj";
 import VectorSource from "ol/source/Vector";
-import { getRenderPixel } from "ol/render";
 import { Circle as CircleStyle, Fill, Stroke, Style } from "ol/style";
 import proj4 from "proj4";
 import type { Coordinate, Site, SiteSpec, SunlightGrid } from "../../api/types";
@@ -17,7 +16,7 @@ import { SunlightLegend } from "../results/SunlightLegend";
 import { sunlightOverlay } from "./sunlightOverlay";
 import { MapCompass } from "./MapCompass";
 import type { Orientation } from "./MapCompass";
-import { detailExtent, detailLayer, edge, geographic, globalExtent, globalImagery, polar, polarCoverages, polarImagery, polarRadius } from "./polarImagery";
+import { detailExtent, detailLayer, edge, geographic, globalExtent, globalImagery, orbiterExtent, orbiterLayer, polar, polarImagery } from "./polarImagery";
 import "ol/ol.css";
 
 type MapMode = "south" | "global";
@@ -42,15 +41,6 @@ function isOnMap(longitude: number, latitude: number) {
     longitude >= -180 && longitude <= 180 && latitude >= -90 && latitude <= 90;
 }
 
-function coverageFeature(geometry: Circle | Polygon, color: string) {
-  const edge = new Feature(geometry);
-  edge.setStyle([
-    new Style({ stroke: new Stroke({ color: "#131820", width: 3 }) }),
-    new Style({ stroke: new Stroke({ color, width: 1.5, lineDash: [6, 5] }) }),
-  ]);
-  return edge;
-}
-
 type Props = {
   sites: Site[];
   selectedId: string | null;
@@ -62,8 +52,6 @@ type Props = {
   sunlight: SunlightGrid | null;
   showSunlight: boolean;
   onToggleSunlight: () => void;
-  /** Hide the coverage key so the map fits a half-width pane. */
-  compact?: boolean;
 };
 
 export function SouthPoleMap(props: Props) {
@@ -86,31 +74,14 @@ export function SouthPoleMap(props: Props) {
     });
     const detail = new TileLayer({ extent: detailExtent, source: polarImagery(detailLayer, 12, detailExtent) });
     detail.setMaxResolution(460);
-    const coverage = new VectorLayer({ source: new VectorSource({
-      features: [
-        ...polarCoverages.map(({ latitude, color }) => coverageFeature(
-          mode === "south" ? new Circle([0, 0], polarRadius(latitude)) :
-            new Polygon([[[-180, latitude], [180, latitude], [180, -90], [-180, -90], [-180, latitude]]]),
-          color,
-        )),
-      ],
-    }) });
+    const orbiter = new TileLayer({ extent: orbiterExtent, source: polarImagery(orbiterLayer, 6, orbiterExtent) });
+    orbiter.setMaxResolution(330);
     const view = createView(mode);
-    const layers = mode === "south" ? [base, detail] : [base];
+    const layers = mode === "south" ? [base, orbiter, detail] : [base];
     const current = new Map({
       target: target.current, view,
-      layers: [...layers, overlay, coverage, new VectorLayer({ source })],
+      layers: [...layers, overlay, new VectorLayer({ source })],
     });
-    detail.on("prerender", (event) => {
-      const context = event.context as CanvasRenderingContext2D;
-      const center = getRenderPixel(event, current.getPixelFromCoordinate([0, 0]));
-      const outside = getRenderPixel(event, current.getPixelFromCoordinate([polarRadius(polarCoverages[0].latitude), 0]));
-      context.save();
-      context.beginPath();
-      context.arc(center[0], center[1], Math.hypot(outside[0] - center[0], outside[1] - center[1]), 0, 2 * Math.PI);
-      context.clip();
-    });
-    detail.on("postrender", (event) => (event.context as CanvasRenderingContext2D).restore());
     map.current = current;
     function updateView() {
       const meters = view.getResolution() ?? 0;
@@ -121,13 +92,16 @@ export function SouthPoleMap(props: Props) {
       const atPole = mode === "south" ? Math.hypot(x, y) <= Math.max(1, meters * 2) : Math.abs(latitude) === 90;
       setScale(getPointResolution(view.getProjection(), meters, center, "m"));
       setOrientation({ longitude, latitude, northAngle: atPole ? null : mode === "south" ? Math.atan2(x, y) * 180 / Math.PI : 0 });
-      const blend = Math.max(0, Math.min(1, (460 - meters) / 300));
-      detail.setOpacity(blend);
+      // Each finer photo fades in as the view zooms past what the layer below can show.
+      const fade = (from: number, span: number) => Math.max(0, Math.min(1, (from - meters) / span));
+      orbiter.setOpacity(fade(320, 140));
+      detail.setOpacity(fade(460, 300));
     }
     updateView();
     setTileError(false);
     base.getSource()?.on("tileloaderror", () => setTileError(true));
     detail.getSource()?.on("tileloaderror", () => setTileError(true));
+    orbiter.getSource()?.on("tileloaderror", () => setTileError(true));
     view.on(["change:resolution", "change:center"], updateView);
     current.on("singleclick", (event) => {
       const state = actions.current;
@@ -206,10 +180,6 @@ export function SouthPoleMap(props: Props) {
       </button>
       {showSunlight && <SunlightLegend />}
     </div>}
-    {!props.compact && <div className="coverage-key" aria-label="Imagery coverage">
-      {polarCoverages.map(({ label, color }) => <span key={label} style={{ color }}>{label}</span>)}
-      <span>{mode === "global" ? "Global WAC · approximately 100 m source detail" : "Polar NAC · 1 m source, ≈4 m tiles"}</span>
-    </div>}
     {props.picking && <p className="map-instruction">Click the map to place the site center</p>}
     {tileError && <p className="map-note" role="status">Some NASA imagery tiles could not load.</p>}
     <div className="map-navigation" role="group" aria-label="Map coverage">
@@ -223,7 +193,7 @@ export function SouthPoleMap(props: Props) {
       }}>South pole</button>
     </div>
     <div className="map-credits">
-      <a className="map-credit" href="https://trek.nasa.gov/moon/" target="_blank" rel="noreferrer">NASA Moon Trek · LROC WAC / NAC</a>
+      <a className="map-credit" href="https://trek.nasa.gov/moon/" target="_blank" rel="noreferrer">NASA Moon Trek · LROC WAC / NAC · Lunar Orbiter</a>
     </div>
   </section>;
 }

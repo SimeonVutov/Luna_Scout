@@ -32,13 +32,9 @@ projection.setGetPointResolution((pixel, [x, y]) => pixel / (1 + (x * x + y * y)
 
 export const detailExtent = [-136526, -136525, 136525, 136526];
 export const detailLayer = "LRO_NAC_AvgMosaic_SPole855_1mp";
-export const polarCoverages = [
-  { latitude: -85.5, label: "85.5°S · NAC imagery", color: "#9ee4d5" },
-  { latitude: -87.5, label: "87.5°S · PDS LOLA 5 m extent", color: "#e4c48c" },
-] as const;
-export function polarRadius(latitude: number) {
-  return 2 * radius * Math.tan((90 + latitude) * Math.PI / 360);
-}
+/** NASA Lunar Orbiter HR/MR film mosaic out to roughly 70°S, with gaps. Moon Trek tiles it only to level 5. */
+export const orbiterExtent = [-612685.728, -612685.729, 612685.729, 612685.728];
+export const orbiterLayer = "LO_HRMR_Mosaic_SPole70_59mp";
 export const globalExtent = [-180, -90, 180, 90];
 export const globalLayer = "LRO_WAC_Mosaic_Global_303ppd_v02";
 

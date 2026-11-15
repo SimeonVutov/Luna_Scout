@@ -58,7 +58,7 @@ function Pane({ slot, data, at, showSunlight, onToggleSunlight }: {
       <StatTiles reading={data.reading} run={data.run} at={at} />
     </header>
     <div className="pane-map">
-      <SouthPoleMap compact sites={[site]} selectedId={site.id} draft={null} picking={false}
+      <SouthPoleMap sites={[site]} selectedId={site.id} draft={null} picking={false}
         onPick={() => undefined} onSelect={() => undefined} cameraTarget={cameraTarget}
         sunlight={data.sunlight} showSunlight={showSunlight} onToggleSunlight={onToggleSunlight} />
     </div>
