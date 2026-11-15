@@ -1,4 +1,11 @@
-import type { FramePayload, Reading, RunRequest, RunStatus, Site, SiteInsight, SiteSpec, TerrainPreview } from "./types";
+import type { FramePayload, Reading, RunList, RunRequest, RunStatus, Site, SiteInsight, SiteSpec, TerrainPreview } from "./types";
+
+/** A failed API call. `status` is null when the server could not be reached at all. */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number | null) {
+    super(message);
+  }
+}
 
 async function send<T>(path: string, method = "GET", body?: unknown, signal?: AbortSignal): Promise<T> {
   let response: Response;
@@ -11,13 +18,13 @@ async function send<T>(path: string, method = "GET", body?: unknown, signal?: Ab
     });
   } catch (error) {
     if (signal?.aborted) throw error;
-    throw new Error("Could not reach the LunaScout API. Check that the backend is running.");
+    throw new ApiError("Could not reach the LunaScout API. Check that the backend is running.", null);
   }
   if (response.status === 204) return undefined as T;
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = typeof payload?.detail === "string" ? payload.detail : payload?.detail?.[0]?.msg;
-    throw new Error(detail ?? "The request could not be completed. Check the API and try again.");
+    throw new ApiError(detail ?? "The request could not be completed. Check the API and try again.", response.status);
   }
   if (payload === null) throw new Error("The API returned an empty or invalid response.");
   return payload as T;
@@ -71,4 +78,8 @@ export function siteInsight(
 ) {
   const query = new URLSearchParams(Object.entries(settings).map(([name, value]) => [name, String(value)]));
   return send<SiteInsight>(`/terrain/insight?${query}`, "POST", site, signal);
+}
+
+export function listRuns(signal: AbortSignal) {
+  return send<RunList>("/runs?limit=30", "GET", undefined, signal);
 }

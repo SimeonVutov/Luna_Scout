@@ -5,6 +5,8 @@ import type { Coordinate, RunStatus, Site, SiteSpec, TimeRange } from "./api/typ
 import { Icon } from "./Icon";
 import { defaultOptions, isActive, useRunOutput, useRunSeries, useScience } from "./features/results/useScience";
 import { useSiteInsight } from "./features/results/useSiteInsight";
+import { ActivityMenu } from "./features/activity/ActivityMenu";
+import { useActivity } from "./features/activity/useActivity";
 import { ResultsPanel } from "./features/results/ResultsPanel";
 import { siteCatalog, usesApiCatalog } from "./features/sites/siteCatalog";
 import { SitePanel } from "./features/sites/SitePanel";
@@ -75,6 +77,9 @@ export function App() {
   const selected = sites.find((site) => site.id === selectedId) ?? null;
   const instant = snapshotAt(range, timeIndex);
   const science = useScience(sites, range, options, instant.toISOString());
+  const activity = useActivity();
+  const siteRuns = Object.fromEntries(sites.map((site) => [site.id, science.status(site)]));
+  const phases: Record<string, string | null> = activity.list?.worker.run_id ? { [activity.list.worker.run_id]: activity.list.worker.activity } : {};
   const exploring = mode === "explore";
   const chosen: Record<Slot, Site | null> = {
     a: sites.find((site) => site.id === compareIds.a) ?? null,
@@ -144,6 +149,7 @@ export function App() {
       result.status === "rejected" ? [`${runnableSites[index].name} · ${errorText(result.reason)}`] : [],
     );
     if (problems.length) setError(problems.join(" "));
+    void activity.refresh();
   }
 
   function flyTo(site: Site) {
@@ -240,6 +246,7 @@ export function App() {
             {catalogState === "loading" && "Loading saved sites…"}
             {catalogState === "error" && <button className="button quiet" type="button" onClick={() => void loadSites()}>Retry loading sites</button>}
           </div>
+          <ActivityMenu list={activity.list} problem={activity.problem} sites={sites} onOpen={() => void activity.refresh()} />
           <button className="button secondary" type="button" onClick={() => setSettingsOpen(true)}><Icon name="settings" size={16} /> Settings</button>
         </div>
       </header>
@@ -251,6 +258,7 @@ export function App() {
       <div className={exploring ? "dashboard" : "dashboard compare"}>
         {exploring ? <SitePanel
           sites={sites} selectedId={selectedId} draft={draft} busy={busy || catalogState !== "ready"}
+          runs={siteRuns} phases={phases} workerRunning={activity.list ? activity.list.worker.running : null}
           onAdd={() => {
             setTerrainMode(false);
             setDraft({ ...emptyDraft, name: `Site ${sites.length + 1}` });

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import type { Site, SiteSpec } from "../../api/types";
+import type { RunStatus, Site, SiteSpec } from "../../api/types";
 import { Icon } from "../../Icon";
+import { RunProgress } from "../activity/RunProgress";
 import { coordinatesLabel, maximumSiteRadius, referenceGroups } from "./referenceSites";
 
 function SiteForm({ site, onChange, onSave, onCancel, busy }: {
@@ -40,11 +41,16 @@ function SiteForm({ site, onChange, onSave, onCancel, busy }: {
   </form>;
 }
 
-export function SitePanel({ sites, selectedId, draft, busy, onAdd, onDraft, onSave, onSelect, onFly, onDelete, onEdit }: {
+export function SitePanel({ sites, selectedId, draft, busy, runs, phases, workerRunning, onAdd, onDraft, onSave, onSelect, onFly, onDelete, onEdit }: {
   sites: Site[];
   selectedId: string | null;
   draft: SiteSpec | null;
   busy: boolean;
+  /** The simulation for the current dates and settings, by site id. */
+  runs: Record<string, RunStatus | null>;
+  /** What the worker is doing for a run, by run id. */
+  phases: Record<string, string | null>;
+  workerRunning: boolean | null;
   onAdd: () => void;
   onDraft: (site: SiteSpec | null) => void;
   onSave: (site: SiteSpec) => void;
@@ -82,6 +88,9 @@ export function SitePanel({ sites, selectedId, draft, busy, onAdd, onDraft, onSa
               <span className="site-info"><strong>{site.name}</strong><small>{coordinatesLabel(site.latitude_deg, site.longitude_deg)}</small></span>
               <span className="site-chevron"><Icon name="chevron" size={15} /></span>
             </button>
+            <div className="site-progress">
+              <RunProgress run={runs[site.id] ?? null} phase={runs[site.id] ? phases[runs[site.id]!.run_id] : null} workerRunning={workerRunning} />
+            </div>
             {selected && <div className="site-details">
               {editing?.id === site.id
                 ? <SiteForm site={editing} onChange={(next) => setEditing({ ...next, id: site.id })} onSave={async (next) => {

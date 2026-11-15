@@ -91,7 +91,8 @@ export type RunStatus = {
   revision: number;
   plan: TimeRange & {
     integration_minutes: number;
-    settings?: { receiver: Receiver | "fixed"; collector_height_m: number; mast_height_m: number };
+    site: Coordinate & { radius_m: number };
+    settings?: { receiver: Receiver | "fixed"; collector_height_m: number; mast_height_m: number; grid_spacing_m: number };
   };
   ready_indices: number[];
   ready_times_utc: string[];
@@ -100,7 +101,18 @@ export type RunStatus = {
   total_frames: number;
   period: PeriodSummary | null;
   message: string | null;
+  submitted_utc?: string | null;
 };
+
+export type WorkerStatus = {
+  running: boolean;
+  pid: number | null;
+  /** What the worker is doing right now, such as "Computing snapshots". */
+  activity: string | null;
+  run_id: string | null;
+};
+
+export type RunList = { worker: WorkerStatus; runs: RunStatus[] };
 
 export type SunlightGrid = {
   offsets_m: number[];

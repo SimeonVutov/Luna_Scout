@@ -62,3 +62,22 @@ export function countdown(
   const noun = current.visibility === "clear" ? nouns.ends : nouns.begins;
   return { state: current.visibility, text: `${noun} in ${formatDuration(end - moment)}` };
 }
+
+/** "5 min ago", "3 h ago": how long ago something started. */
+export function ago(iso: string | null | undefined, now = Date.now()) {
+  if (!iso) return "";
+  const seconds = Math.max(0, (now - Date.parse(iso)) / 1000);
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`;
+  return `${Math.floor(seconds / 86400)} d ago`;
+}
+
+/** The UTC days a run covers, such as "15 Nov 2026" or "15 Nov – 17 Nov 2026". */
+export function rangeLabel(startIso: string, endIso: string) {
+  const first = new Date(startIso);
+  const last = new Date(Date.parse(endIso) - 1);
+  const short = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+  const full = dateLabel(first);
+  return first.toISOString().slice(0, 10) === last.toISOString().slice(0, 10) ? full : `${short.format(first)} – ${dateLabel(last)}`;
+}
