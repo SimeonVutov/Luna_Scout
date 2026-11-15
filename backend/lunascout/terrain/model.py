@@ -166,6 +166,16 @@ class Terrain:
         """Trace an array of unit directions (points, rays, XYZ) from shared origins."""
         return mesh.trace_rays(origins_m, directions, self._depths, self._geometry)
 
+    def trace_hits(
+        self, origins_m: FloatArray, directions: FloatArray
+    ) -> tuple[NDArray[np.int8], FloatArray]:
+        """Trace rays like `trace_rays` and also return first-hit distances in metres.
+
+        Hit distances are NaN for rays that are clear, unresolved, or blocked by
+        the solid interior across missing terrain.
+        """
+        return mesh.trace_rays_to_hits(origins_m, directions, self._depths, self._geometry)
+
 
 def prepare_terrain(
     data_dir: Path,
