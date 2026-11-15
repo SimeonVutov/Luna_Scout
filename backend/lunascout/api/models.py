@@ -1,5 +1,7 @@
 from pydantic import AwareDatetime, BaseModel, Field, model_validator
 
+from ..simulation.engine import RayMethod, Receiver
+
 
 class SiteSpec(BaseModel):
     name: str = Field(min_length=1, max_length=80)
@@ -23,9 +25,11 @@ class RunSpec(BaseModel):
     grid_spacing_m: float = Field(default=20, gt=0)
     solar_disk_samples: int = Field(default=37, gt=0)
     mast_height_m: float = Field(default=2, ge=0)
-    collector_height_m: float = Field(default=0, ge=0)
+    collector_height_m: float = Field(default=2, ge=0)
+    receiver: Receiver = "vertical_tracking"
     collector_tilt_deg: float | None = Field(default=None, ge=0, le=90)
     collector_azimuth_deg: float = Field(default=0, ge=0, lt=360)
+    ray_method: RayMethod = "horizon"
 
     @model_validator(mode="after")
     def check_request(self) -> "RunSpec":

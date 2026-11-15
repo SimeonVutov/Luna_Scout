@@ -60,8 +60,10 @@ def science_router(data_dir: Path, queue: RunQueue) -> APIRouter:
                 solar_disk_samples=spec.solar_disk_samples,
                 mast_height_m=spec.mast_height_m,
                 collector_height_m=spec.collector_height_m,
+                receiver=spec.receiver,
                 collector_tilt_deg=spec.collector_tilt_deg,
                 collector_azimuth_deg=spec.collector_azimuth_deg,
+                ray_method=spec.ray_method,
             )
 
             plan = create_plan(

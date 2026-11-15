@@ -10,6 +10,7 @@ from numpy.typing import NDArray
 
 from ..ephemeris.horizons import EphemerisSample
 from ..terrain import mesh
+from ..terrain.horizon import HorizonMap
 from ..terrain.model import Terrain
 from .frames import (
     MOON_RADIUS_M,
@@ -18,11 +19,13 @@ from .frames import (
     local_axes,
     site_directions,
 )
-from .radiation import EARTH_MEAN_RADIUS_M, SUN_RADIUS_M, direct_sunlight
+from .radiation import EARTH_MEAN_RADIUS_M, SUN_RADIUS_M, direct_sunlight, disk_directions
 
 # A millimetre above the geometric surface avoids re-hitting the source triangle.
 _RAY_ORIGIN_OFFSET_M = 0.001
 _MAX_GRID_WIDTH = 1001
+# Earth spans about 1.9° from the Moon; 37 equal-solid-angle rays resolve partial views.
+EARTH_DISK_SAMPLES = 37
 
 Visibility = Literal["clear", "blocked", "unknown"]
 _VISIBILITY_LABEL: dict[int, Visibility] = {
@@ -31,22 +34,33 @@ _VISIBILITY_LABEL: dict[int, Visibility] = {
     mesh.UNKNOWN: "unknown",
 }
 
+# What receives the sunlight at each grid point:
+#   vertical_tracking - A vertical panel turned toward the Sun's azimuth (typical lander arrays).
+#   terrain - The local terrain triangle (ground illumination, thermal studies).
+#   horizontal - A level plate.
+#   fixed - A plane with an explicit tilt and azimuth.
+Receiver = Literal["vertical_tracking", "terrain", "horizontal", "fixed"]
+# horizon - Precomputed terrain horizons with exact re-tracing near the skyline.
+# direct - Trace every solar-disk ray against the terrain (the reference method).
+RayMethod = Literal["horizon", "direct"]
+
 
 @dataclass(frozen=True)
 class SimulationSettings:
     """Sampling and receiver settings for a snapshot.
 
-    Altitudes are metres above the DEM along the local radial vertical. With
-    the default collector tilt, irradiance is incident on the terrain triangle.
-    An explicit tilt is from local horizontal, with azimuth clockwise from north.
+    Heights are metres above the DEM along the local radial vertical. A fixed
+    receiver's tilt is from local horizontal, with azimuth clockwise from north.
     """
 
     grid_spacing_m: float = 20.0
     solar_disk_samples: int = 37
     mast_height_m: float = 2.0
-    collector_height_m: float = 0.0
+    collector_height_m: float = 2.0
+    receiver: Receiver = "vertical_tracking"
     collector_tilt_deg: float | None = None
     collector_azimuth_deg: float = 0.0
+    ray_method: RayMethod = "horizon"
 
     def __post_init__(self) -> None:
         if not isfinite(self.grid_spacing_m) or self.grid_spacing_m <= 0:
@@ -56,12 +70,18 @@ class SimulationSettings:
         for height in (self.mast_height_m, self.collector_height_m):
             if not isfinite(height) or height < 0:
                 raise ValueError("Mast and collector heights must be finite and nonnegative.")
-        if self.collector_tilt_deg is not None and not 0 <= self.collector_tilt_deg <= 90:
-            raise ValueError("Collector tilt must be between 0° and 90°.")
-        if not 0 <= self.collector_azimuth_deg < 360:
-            raise ValueError("Collector azimuth must be in [0°, 360°).")
-        if self.collector_tilt_deg is None and self.collector_azimuth_deg != 0:
-            raise ValueError("Set a collector tilt to specify its azimuth.")
+        if self.receiver not in ("vertical_tracking", "terrain", "horizontal", "fixed"):
+            raise ValueError(f"Unknown receiver: {self.receiver}.")
+        if self.ray_method not in ("horizon", "direct"):
+            raise ValueError(f"Unknown ray method: {self.ray_method}.")
+
+        if self.receiver == "fixed":
+            if self.collector_tilt_deg is None or not 0 <= self.collector_tilt_deg <= 90:
+                raise ValueError("A fixed receiver needs a tilt between 0° and 90°.")
+            if not 0 <= self.collector_azimuth_deg < 360:
+                raise ValueError("Collector azimuth must be in [0°, 360°).")
+        elif self.collector_tilt_deg is not None or self.collector_azimuth_deg != 0:
+            raise ValueError("Collector tilt and azimuth apply only to a fixed receiver.")
 
 
 @dataclass(frozen=True)
@@ -125,11 +145,17 @@ class Snapshot:
     earth_center_visibility: Visibility
     summary: SnapshotSummary
     grid: SnapshotGrid
+    # Fraction of Earth's apparent disk visible from the mast; None without ground.
+    earth_disk_visible_fraction: Bounds | None = None
 
 
 @dataclass(frozen=True)
 class PreparedSite:
-    """Terrain, grid and instruments reused across every time in a run."""
+    """Terrain, grid and instruments reused across every time in a run.
+
+    Receiver arrays (`solar_origins_m`, `receiver_up`, `collector_normals`) list
+    the reporting points with known ground, in row-major grid order.
+    """
 
     terrain: Terrain
     settings: SimulationSettings
@@ -139,6 +165,7 @@ class PreparedSite:
     heights_m: FloatArray
     dem_spacing_m: FloatArray
     solar_origins_m: FloatArray
+    receiver_up: FloatArray
     collector_normals: FloatArray
     axes: tuple[FloatArray, FloatArray, FloatArray]
     center_height_m: float | None
@@ -174,6 +201,7 @@ def prepare_site(
     heights = np.full(inside.shape, np.nan)
     spacing = np.full(inside.shape, np.nan)
     origins: list[FloatArray] = []
+    ups: list[FloatArray] = []
     normals: list[FloatArray] = []
     rows, columns = np.nonzero(inside)
     for row, column, up in zip(rows, columns, directions, strict=True):
@@ -188,6 +216,7 @@ def prepare_site(
         heights[row, column] = np.linalg.norm(ground.position_m) - MOON_RADIUS_M
         spacing[row, column] = ground.dem_spacing_m
         origins.append(_receiver_origin(ground.position_m, up, settings.collector_height_m))
+        ups.append(up)
         normals.append(_collector_normal(ground.normal, up, settings))
 
     axes = local_axes(site.latitude_deg, site.longitude_deg)
@@ -214,6 +243,7 @@ def prepare_site(
         heights_m=heights,
         dem_spacing_m=spacing,
         solar_origins_m=np.asarray(origins),
+        receiver_up=np.asarray(ups),
         collector_normals=np.asarray(normals),
         axes=axes,
         center_height_m=center_height,
@@ -233,8 +263,14 @@ def calculate_snapshot(
     return trace_snapshot(prepared, ephemeris)
 
 
-def trace_snapshot(prepared: PreparedSite, ephemeris: EphemerisSample) -> Snapshot:
-    """Trace a timestamp against an already sampled site."""
+def trace_snapshot(
+    prepared: PreparedSite, ephemeris: EphemerisSample, horizons: HorizonMap | None = None
+) -> Snapshot:
+    """Trace a timestamp against an already sampled site.
+
+    `horizons`, built for `prepared.solar_origins_m`, replaces most solar-disk
+    traces with horizon lookups; without it every ray is traced directly.
+    """
     if ephemeris.frame != prepared.terrain.frame:
         raise ValueError("The ephemeris and terrain must use the same lunar frame.")
 
@@ -251,10 +287,11 @@ def trace_snapshot(prepared: PreparedSite, ephemeris: EphemerisSample) -> Snapsh
         ) = direct_sunlight(
             prepared.terrain,
             prepared.solar_origins_m,
-            prepared.collector_normals,
+            receiver_normals(prepared, ephemeris.sun_m),
             ephemeris.sun_m,
             ephemeris.earth_m,
             prepared.settings.solar_disk_samples,
+            horizons,
         )
 
     grid = SnapshotGrid(
@@ -297,6 +334,54 @@ def trace_snapshot(prepared: PreparedSite, ephemeris: EphemerisSample) -> Snapsh
         earth_center_visibility=_VISIBILITY_LABEL[mast_status],
         summary=summary,
         grid=grid,
+        earth_disk_visible_fraction=_earth_disk_fraction(
+            prepared.terrain, prepared.mast_origin_m, earth_vector_m
+        ),
+    )
+
+
+def receiver_normals(prepared: PreparedSite, sun_m: FloatArray) -> FloatArray:
+    """Unit receiving-plane normals for each receiver at the Sun position `sun_m`.
+
+    Fixed receivers use their prepared normals. A vertical tracking panel turns
+    about the local vertical to face the Sun, so its normal changes with time.
+    """
+    if prepared.settings.receiver != "vertical_tracking":
+        return prepared.collector_normals
+
+    sun_vectors_m = sun_m - prepared.solar_origins_m
+    sun_directions = sun_vectors_m / np.linalg.norm(sun_vectors_m, axis=1)[:, None]
+    up = prepared.receiver_up
+
+    # Single-axis tracking normal: n = (s − (s·u)u)/‖s − (s·u)u‖
+    #   n - Unit normal of a vertical panel facing the Sun's azimuth, Moon-fixed XYZ.
+    #   s (sun_directions) - Unit receiver-to-Sun-centre direction, Moon-fixed XYZ.
+    #   u (up) - Unit local radial vertical at the receiver.
+    #   Assumption: The panel stays vertical. If the Sun were at the zenith (never
+    #   south of 60°S) the panel would have no preferred azimuth; the Sun direction is used.
+    rise = np.einsum("ni,ni->n", sun_directions, up)
+    horizontal = sun_directions - rise[:, None] * up
+    horizontal_length = np.linalg.norm(horizontal, axis=1)
+    at_zenith = horizontal_length < 1e-9
+    horizontal[at_zenith] = sun_directions[at_zenith]
+    horizontal_length[at_zenith] = 1.0
+    return horizontal / horizontal_length[:, None]
+
+
+def _earth_disk_fraction(
+    terrain: Terrain, mast_origin_m: FloatArray, earth_vector_m: FloatArray
+) -> Bounds:
+    """Bounds on the fraction of Earth's apparent disk that clears the terrain."""
+    earth_disk = disk_directions(earth_vector_m[None, :], EARTH_MEAN_RADIUS_M, EARTH_DISK_SAMPLES)
+    statuses = terrain.trace_rays(mast_origin_m[None, :], earth_disk.directions)[0]
+
+    # Equal-weight disk visibility: f₋ = Σⱼ[clearⱼ]/N; f₊ = Σⱼ[not blockedⱼ]/N
+    #   f₋, f₊ - Dimensionless visible-disk bounds; unresolved rays count only in f₊.
+    #   N (EARTH_DISK_SAMPLES) - Equal-solid-angle rays across Earth's apparent disk.
+    #   Assumption: Earth is a uniform sphere of mean radius; this is geometry, not a radio link.
+    return Bounds(
+        float(np.mean(statuses == mesh.CLEAR)),
+        float(np.mean(statuses != mesh.BLOCKED)),
     )
 
 
@@ -400,9 +485,16 @@ def _receiver_origin(ground_m: FloatArray, up: FloatArray, height_m: float) -> F
 def _collector_normal(
     normal: FloatArray, up: FloatArray, settings: SimulationSettings
 ) -> FloatArray:
-    """Use the terrain facet or an explicitly tilted local receiving plane."""
-    if settings.collector_tilt_deg is None:
+    """Time-independent receiving normal for terrain, horizontal and fixed receivers.
+
+    A vertical tracking receiver's normal depends on the Sun; `receiver_normals`
+    computes it per timestamp, and the radial vertical is stored here unused.
+    """
+    if settings.receiver == "terrain":
         return normal
+    if settings.receiver in ("horizontal", "vertical_tracking"):
+        return up
+    assert settings.collector_tilt_deg is not None
 
     # Spherical inverse coordinates: φ = atan2(u_z, √(u_x² + u_y²)); λ = atan2(u_y, u_x)
     #   u (up) - Unit radial Moon-fixed vector, dimensionless.

@@ -94,7 +94,14 @@ def _argument_parser() -> argparse.ArgumentParser:
     snapshot.add_argument(
         "--collector-height-m", type=float, default=SimulationSettings.collector_height_m
     )
-    snapshot.add_argument("--collector-tilt-deg", type=float, help="tilt from local horizontal")
+    snapshot.add_argument(
+        "--receiver",
+        choices=("vertical_tracking", "terrain", "horizontal", "fixed"),
+        help="receiving surface (default: vertical_tracking, or fixed with --collector-tilt-deg)",
+    )
+    snapshot.add_argument(
+        "--collector-tilt-deg", type=float, help="tilt from local horizontal (fixed receiver)"
+    )
     snapshot.add_argument(
         "--collector-azimuth-deg", type=float, default=0.0, help="clockwise from north"
     )
@@ -198,13 +205,19 @@ def _run_snapshot(arguments: argparse.Namespace) -> None:
         raise ValueError(f"Output directory already exists: {output}")
 
     site = SiteFootprint(arguments.latitude, arguments.longitude, arguments.radius_m)
+    receiver = arguments.receiver
+    if receiver is None:
+        receiver = "fixed" if arguments.collector_tilt_deg is not None else SimulationSettings.receiver
+    # A single snapshot gains nothing from a horizon map, so every ray is traced directly.
     settings = SimulationSettings(
         grid_spacing_m=arguments.grid_spacing_m,
         solar_disk_samples=arguments.solar_disk_samples,
         mast_height_m=arguments.mast_height_m,
         collector_height_m=arguments.collector_height_m,
+        receiver=receiver,
         collector_tilt_deg=arguments.collector_tilt_deg,
         collector_azimuth_deg=arguments.collector_azimuth_deg,
+        ray_method="direct",
     )
     ephemerides = load_ephemerides_at(
         (arguments.at,), data_dir=arguments.data_dir, correction=arguments.correction
@@ -235,6 +248,9 @@ def _write_snapshot(
         else None,
         "earth_at_mast": asdict(snapshot.earth_at_mast) if snapshot.earth_at_mast else None,
         "earth_center_visibility": snapshot.earth_center_visibility,
+        "earth_disk_visible_fraction": asdict(snapshot.earth_disk_visible_fraction)
+        if snapshot.earth_disk_visible_fraction
+        else None,
         "summary": asdict(snapshot.summary),
         "ephemeris": _ephemeris_report(ephemerides),
         "terrain": {
