@@ -1,12 +1,13 @@
-"""Time integration over known samples and estimated Earth visibility windows."""
+"""Time integration over known samples, and Sun and Earth visibility windows."""
 
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, time, timedelta
-from typing import Sequence
+from datetime import date, datetime, time, timedelta
 
 from pydantic import BaseModel
 
 from ..simulation.engine import BodyView, Bounds, SnapshotSummary, Visibility
+from ..simulation.events import CentreWindows, VisibilityWindow
 
 
 class Reading(BaseModel):
@@ -18,12 +19,7 @@ class Reading(BaseModel):
     earth_at_mast: BodyView | None
     earth_center_visibility: Visibility
     summary: SnapshotSummary
-
-
-class EarthWindow(BaseModel):
-    start_utc: datetime
-    end_utc: datetime
-    visibility: Visibility
+    earth_disk_visible_fraction: Bounds | None = None
 
 
 class PeriodMetrics(BaseModel):
@@ -38,9 +34,24 @@ class DaySummary(PeriodMetrics):
     date_utc: str
 
 
+class LongestWindow(BaseModel):
+    """The longest window with one visibility state over the run."""
+
+    start_utc: datetime
+    end_utc: datetime
+    hours: float
+    # The window touches the start or end of the run, so the real one may be longer.
+    truncated: bool
+
+
 class PeriodSummary(PeriodMetrics):
     days: list[DaySummary]
-    earth_windows: list[EarthWindow]
+    earth_windows: list[VisibilityWindow]
+    # Exact windows at the site-centre instruments. None for runs saved before revision 3,
+    # whose Earth windows place each change at the midpoint between samples.
+    sun_windows: list[VisibilityWindow] | None = None
+    longest_darkness: LongestWindow | None = None
+    longest_earth_blackout: LongestWindow | None = None
 
 
 @dataclass
@@ -64,61 +75,92 @@ class _Totals:
         )
 
 
-def integrate(readings: Sequence[Reading]) -> PeriodSummary:
-    """Integrate successive samples, including the run end, using elapsed UTC time."""
+def integrate(
+    readings: Sequence[Reading], centre: CentreWindows | None = None
+) -> PeriodSummary:
+    """Integrate successive samples, including the run end, using elapsed UTC time.
+
+    Site-area metrics use linear segments between samples. Earth hours and windows
+    come from the exact `centre` windows when available; otherwise each Earth
+    change is placed at the midpoint between the two samples that bracket it.
+    """
     total = _Totals()
     by_day: dict[str, _Totals] = {}
-    windows: list[EarthWindow] = []
+
     for first, last in zip(readings, readings[1:]):
-        for start, end, visibility in _window_intervals(first, last):
-            if windows and windows[-1].visibility == visibility:
-                windows[-1].end_utc = end
-            else:
-                windows.append(EarthWindow(start_utc=start, end_utc=end, visibility=visibility))
+        for day, start, end in _split_at_midnight(first.at_utc, last.at_utc):
+            daily = by_day.setdefault(day.isoformat(), _Totals())
+            _accumulate_site((total, daily), first, last, start, end)
 
-            while start < end:
-                day = start.date()
-                midnight = datetime.combine(day + timedelta(days=1), time.min, tzinfo=start.tzinfo)
-                finish = min(end, midnight)
-                daily = by_day.setdefault(day.isoformat(), _Totals())
-                _accumulate((total, daily), first, last, start, finish, visibility)
-                start = finish
+    earth_windows = centre.earth if centre is not None else _midpoint_earth_windows(readings)
+    for window in earth_windows:
+        for day, start, end in _split_at_midnight(window.start_utc, window.end_utc):
+            daily = by_day.setdefault(day.isoformat(), _Totals())
+            _accumulate_earth((total, daily), window.visibility, start, end)
 
+    sun_windows = centre.sun if centre is not None else None
+    run_start = readings[0].at_utc if readings else None
+    run_end = readings[-1].at_utc if readings else None
     return PeriodSummary(
         **total.report().model_dump(),
         days=[
             DaySummary(date_utc=day, **metrics.report().model_dump())
             for day, metrics in by_day.items()
         ],
-        earth_windows=windows,
+        earth_windows=earth_windows,
+        sun_windows=sun_windows,
+        longest_darkness=_longest(sun_windows, "blocked", run_start, run_end),
+        longest_earth_blackout=(
+            _longest(earth_windows, "blocked", run_start, run_end) if centre is not None else None
+        ),
     )
 
 
-def _window_intervals(first: Reading, last: Reading) -> list[tuple[datetime, datetime, Visibility]]:
-    start, end = first.at_utc, last.at_utc
-    before, after = first.earth_center_visibility, last.earth_center_visibility
-    if "unknown" in (before, after):
-        return [(start, end, "unknown")]
-    if before == after:
-        return [(start, end, before)]
-
-    # Midpoint transition estimate: t_cross = t_start + (t_end − t_start)/2
-    #   t_cross (midpoint) - Estimated transition time, UTC.
-    #   t_start, t_end (start, end) - Consecutive known sample times, UTC.
-    #   Assumption: A single crossing is assigned to the sample midpoint.
-    midpoint = start + (end - start) / 2
-    return [(start, midpoint, before), (midpoint, end, after)]
+def _split_at_midnight(start: datetime, end: datetime) -> Iterator[tuple[date, datetime, datetime]]:
+    """Yield (UTC day, start, end) pieces of an interval, split at UTC midnights."""
+    while start < end:
+        day = start.date()
+        midnight = datetime.combine(day + timedelta(days=1), time.min, tzinfo=start.tzinfo)
+        finish = min(end, midnight)
+        yield day, start, finish
+        start = finish
 
 
-def _accumulate(
+def _midpoint_earth_windows(readings: Sequence[Reading]) -> list[VisibilityWindow]:
+    """Earth windows estimated from samples when exact centre windows are unavailable."""
+    windows: list[VisibilityWindow] = []
+    for first, last in zip(readings, readings[1:]):
+        start, end = first.at_utc, last.at_utc
+        before, after = first.earth_center_visibility, last.earth_center_visibility
+        if "unknown" in (before, after):
+            pieces = [(start, end, "unknown")]
+        elif before == after:
+            pieces = [(start, end, before)]
+        else:
+            # Midpoint transition estimate: t_cross = t_start + (t_end − t_start)/2
+            #   t_cross (midpoint) - Estimated transition time, UTC.
+            #   t_start, t_end (start, end) - Consecutive known sample times, UTC.
+            #   Assumption: A single crossing is assigned to the sample midpoint.
+            midpoint = start + (end - start) / 2
+            pieces = [(start, midpoint, before), (midpoint, end, after)]
+
+        for piece_start, piece_end, visibility in pieces:
+            if windows and windows[-1].visibility == visibility:
+                previous = windows[-1]
+                windows[-1] = VisibilityWindow(previous.start_utc, piece_end, visibility)
+            else:
+                windows.append(VisibilityWindow(piece_start, piece_end, visibility))
+    return windows
+
+
+def _accumulate_site(
     totals: tuple[_Totals, _Totals],
     first: Reading,
     last: Reading,
     start: datetime,
     end: datetime,
-    visibility: Visibility,
 ) -> None:
-    """Add a linear sample segment to both whole-period and UTC-day totals."""
+    """Add a linear sample segment's site-area metrics to period and UTC-day totals."""
     # Elapsed duration: Δh = (t_b − t_a)/3600
     #   Δh (duration_hours) - Integration segment duration, in hours.
     #   t_a, t_b (start, end) - Segment UTC endpoints, difference in seconds.
@@ -181,10 +223,40 @@ def _accumulate(
             accumulator.energy[0] += duration_hours * irradiance.lower / 1000
             accumulator.energy[1] += duration_hours * irradiance.upper / 1000
 
+
+def _accumulate_earth(
+    totals: tuple[_Totals, _Totals], visibility: Visibility, start: datetime, end: datetime
+) -> None:
+    """Add a piece of an Earth window to period and UTC-day totals."""
+    duration_hours = (end - start).total_seconds() / 3600
+    for accumulator in totals:
         if visibility == "clear":
             accumulator.earth_clear += duration_hours
         elif visibility == "unknown":
             accumulator.earth_unknown += duration_hours
+
+
+def _longest(
+    windows: Sequence[VisibilityWindow] | None,
+    visibility: Visibility,
+    run_start: datetime | None,
+    run_end: datetime | None,
+) -> LongestWindow | None:
+    """The longest window in a given state, flagged when it touches the run's edges."""
+    if not windows or run_start is None or run_end is None:
+        return None
+
+    matching = [window for window in windows if window.visibility == visibility]
+    if not matching:
+        return None
+
+    longest = max(matching, key=lambda window: window.end_utc - window.start_utc)
+    return LongestWindow(
+        start_utc=longest.start_utc,
+        end_utc=longest.end_utc,
+        hours=(longest.end_utc - longest.start_utc).total_seconds() / 3600,
+        truncated=longest.start_utc <= run_start or longest.end_utc >= run_end,
+    )
 
 
 def _interpolate(first: Bounds, last: Bounds, fraction: float) -> Bounds:
