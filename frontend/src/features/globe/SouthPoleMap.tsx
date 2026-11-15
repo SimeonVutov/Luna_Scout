@@ -62,6 +62,8 @@ type Props = {
   sunlight: SunlightGrid | null;
   showSunlight: boolean;
   onToggleSunlight: () => void;
+  /** Hide the coverage key so the map fits a half-width pane. */
+  compact?: boolean;
 };
 
 export function SouthPoleMap(props: Props) {
@@ -204,10 +206,10 @@ export function SouthPoleMap(props: Props) {
       </button>
       {showSunlight && <SunlightLegend />}
     </div>}
-    <div className="coverage-key" aria-label="Imagery coverage">
+    {!props.compact && <div className="coverage-key" aria-label="Imagery coverage">
       {polarCoverages.map(({ label, color }) => <span key={label} style={{ color }}>{label}</span>)}
       <span>{mode === "global" ? "Global WAC · approximately 100 m source detail" : "Polar NAC · 1 m source, ≈4 m tiles"}</span>
-    </div>
+    </div>}
     {props.picking && <p className="map-instruction">Click the map to place the site center</p>}
     {tileError && <p className="map-note" role="status">Some NASA imagery tiles could not load.</p>}
     <div className="map-navigation" role="group" aria-label="Map coverage">

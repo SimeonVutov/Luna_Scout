@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { SouthPoleMap } from "./features/globe/SouthPoleMap";
-import type { Coordinate, Site, SiteSpec, TimeRange } from "./api/types";
+import type { Coordinate, RunStatus, Site, SiteSpec, TimeRange } from "./api/types";
 import { Icon } from "./Icon";
 import { defaultOptions, isActive, useRunOutput, useRunSeries, useScience } from "./features/results/useScience";
 import { ResultsPanel } from "./features/results/ResultsPanel";
@@ -9,6 +9,11 @@ import { SitePanel } from "./features/sites/SitePanel";
 import { maximumSiteRadius } from "./features/sites/referenceSites";
 import { SettingsDrawer } from "./features/settings/SettingsDrawer";
 import { Timeline } from "./features/timeline/Timeline";
+import type { ReadyTrack } from "./features/timeline/Timeline";
+import { ComparePicker } from "./features/compare/ComparePicker";
+import { CompareLive } from "./features/compare/CompareLive";
+import { slotColor, slotLabel, slots } from "./features/compare/slots";
+import type { Slot } from "./features/compare/slots";
 import { snapshotAt, todayRange } from "./features/timeline/time";
 
 const TerrainView = lazy(() => import("./features/terrain/TerrainView").then((module) => ({ default: module.TerrainView })));
@@ -24,7 +29,11 @@ function errorText(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
 
+type Mode = "explore" | "compare";
+
 export function App() {
+  const [mode, setMode] = useState<Mode>("explore");
+  const [compareIds, setCompareIds] = useState<Record<Slot, string | null>>({ a: null, b: null });
   const [sites, setSites] = useState<Site[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<SiteSpec | null>(null);
@@ -59,16 +68,26 @@ export function App() {
   const selected = sites.find((site) => site.id === selectedId) ?? null;
   const instant = snapshotAt(range, timeIndex);
   const science = useScience(sites, range, options, instant.toISOString());
+  const exploring = mode === "explore";
+  const chosen: Record<Slot, Site | null> = {
+    a: sites.find((site) => site.id === compareIds.a) ?? null,
+    b: sites.find((site) => site.id === compareIds.b) ?? null,
+  };
+  const compareRuns: Record<Slot, RunStatus | null> = { a: science.status(chosen.a), b: science.status(chosen.b) };
+  const compareOutputA = useRunOutput(exploring ? null : compareRuns.a, timeIndex);
+  const compareOutputB = useRunOutput(exploring ? null : compareRuns.b, timeIndex);
+  const compareOutputs = { a: compareOutputA, b: compareOutputB };
+
   const selectedRun = science.status(selected);
-  const selectedOutput = useRunOutput(selectedRun, timeIndex);
-  const series = useRunSeries(selectedRun);
+  const selectedOutput = useRunOutput(exploring ? selectedRun : null, timeIndex);
+  const series = useRunSeries(exploring ? selectedRun : null);
   const showTerrain = terrainMode && selected !== null && !draft;
   const terrainKey = selected ? `${selected.latitude_deg}/${selected.longitude_deg}/${selected.radius_m}` : null;
   useEffect(() => {
     if (showTerrain) setVisitedTerrain(terrainKey);
   }, [showTerrain, terrainKey]);
   const sunlight = selectedOutput.frame?.grid ?? null;
-  const submittedSites = selected ? [selected] : [];
+  const submittedSites = exploring ? (selected ? [selected] : []) : slots.flatMap((slot) => chosen[slot] ?? []);
   const runnableSites = submittedSites.filter((site) => {
     if (site.latitude_deg > -60) return false;
     const status = science.status(site);
@@ -80,6 +99,29 @@ export function App() {
 
   function selectSite(id: string | null) {
     setSelectedId(id);
+  }
+
+  function chooseMode(next: Mode) {
+    if (next === "compare") {
+      // Start from what the user was looking at: the selected site as A, any other site as B.
+      const first = compareIds.a ?? selectedId;
+      const second = compareIds.b ?? sites.find((site) => site.id !== first)?.id ?? null;
+      setCompareIds({ a: first, b: second === first ? null : second });
+      setDraft(null);
+    }
+    setMode(next);
+  }
+
+  function assign(slot: Slot, id: string | null) {
+    const other: Slot = slot === "a" ? "b" : "a";
+    // Picking the other slot's site swaps the two so a site is never compared with itself.
+    setCompareIds((current) => id !== null && id === current[other]
+      ? { ...current, [slot]: id, [other]: current[slot] }
+      : { ...current, [slot]: id });
+  }
+
+  function swap() {
+    setCompareIds((current) => ({ a: current.b, b: current.a }));
   }
 
   async function startRuns() {
@@ -154,6 +196,10 @@ export function App() {
     setRange(next);
   }
 
+  const tracks: ReadyTrack[] | undefined = exploring
+    ? (selectedRun ? [{ id: "selected", color: "var(--accent)", ready: selectedRun.ready_indices }] : undefined)
+    : slots.flatMap((slot) => compareRuns[slot] ? [{ id: slot, label: slotLabel[slot], color: slotColor[slot], ready: compareRuns[slot]!.ready_indices }] : []);
+
   return (
     <main className="workspace">
       <header className="topbar">
@@ -161,9 +207,15 @@ export function App() {
           <span className="brand-mark"><Icon name="moon" size={24} /></span>
           <div><h1>LunaScout</h1><p>Lunar landing sites</p></div>
         </div>
-        <div className="view-switch" role="group" aria-label="Lunar view">
-          <button className="button secondary" type="button" aria-pressed={!showTerrain} onClick={() => setTerrainMode(false)}>Map</button>
-          <button className="button secondary" type="button" aria-pressed={showTerrain} disabled={!selected || selected.latitude_deg > -60 || !!draft} onClick={() => setTerrainMode(true)}>3D terrain</button>
+        <div className="topbar-center">
+          <div className="view-switch mode-switch" role="group" aria-label="Mode">
+            <button className="button secondary" type="button" aria-pressed={exploring} onClick={() => chooseMode("explore")}>Explore</button>
+            <button className="button secondary" type="button" aria-pressed={!exploring} disabled={sites.length < 2} title={sites.length < 2 ? "Save two sites to compare them" : undefined} onClick={() => chooseMode("compare")}>Compare</button>
+          </div>
+          {exploring && <div className="view-switch" role="group" aria-label="Lunar view">
+            <button className="button secondary" type="button" aria-pressed={!showTerrain} onClick={() => setTerrainMode(false)}>Map</button>
+            <button className="button secondary" type="button" aria-pressed={showTerrain} disabled={!selected || selected.latitude_deg > -60 || !!draft} onClick={() => setTerrainMode(true)}>3D terrain</button>
+          </div>}
         </div>
         <div className="topbar-end">
           <div className="connection" role="status">
@@ -179,8 +231,8 @@ export function App() {
         <span>{error}</span><button type="button" aria-label="Dismiss message" onClick={() => setError(null)}><Icon name="close" size={16} /></button>
       </div>}
 
-      <div className="dashboard">
-        <SitePanel
+      <div className={exploring ? "dashboard" : "dashboard compare"}>
+        {exploring ? <SitePanel
           sites={sites} selectedId={selectedId} draft={draft} busy={busy || catalogState !== "ready"}
           onAdd={() => {
             setTerrainMode(false);
@@ -188,8 +240,15 @@ export function App() {
           }}
           onDraft={setDraft} onSave={(site) => void save(site)} onSelect={selectSite}
           onFly={flyTo} onDelete={deleteSaved} onEdit={edit}
-        />
-        <div className="viewport-stage">
+        /> : <ComparePicker sites={sites} chosen={chosen} runs={compareRuns} options={options}
+          submitting={submittedSites.some(science.submitting)} canStart={chosen.a !== null && chosen.b !== null && runnableSites.length > 0}
+          onAssign={assign} onSwap={swap} onRun={() => void startRuns()} onOpenSettings={() => setSettingsOpen(true)} />}
+        {!exploring && <CompareLive at={instant} showSunlight={showSunlight} onToggleSunlight={() => setShowSunlight((value) => !value)}
+          panes={{
+            a: { site: chosen.a, run: compareRuns.a, reading: compareOutputs.a.frame?.reading ?? null, sunlight: compareOutputs.a.frame?.grid ?? null },
+            b: { site: chosen.b, run: compareRuns.b, reading: compareOutputs.b.frame?.reading ?? null, sunlight: compareOutputs.b.frame?.grid ?? null },
+          }} />}
+        <div className="viewport-stage" hidden={!exploring}>
           <div className="stage-view" hidden={showTerrain}>
             <SouthPoleMap sites={sites} selectedId={selectedId} draft={activeDraft} picking={draft !== null}
               onPick={pick} onSelect={selectSite} cameraTarget={cameraTarget} sunlight={sunlight}
@@ -202,14 +261,14 @@ export function App() {
             </Suspense>
           </div>}
         </div>
-        <ResultsPanel site={selected} at={instant} range={range} index={timeIndex}
+        {exploring && <ResultsPanel site={selected} at={instant} range={range} index={timeIndex}
           run={selectedRun} reading={selectedOutput.frame?.reading ?? null} series={series} frameError={selectedOutput.error}
           submitting={submittedSites.some(science.submitting)} reconnecting={science.reconnecting}
           priorityError={science.priorityError}
           options={options} onRun={() => void startRuns()} onOpenSettings={() => setSettingsOpen(true)}
-          canStart={runnableSites.length > 0} />
+          canStart={runnableSites.length > 0} />}
       </div>
-      <Timeline range={range} index={timeIndex} onIndex={setTimeIndex} onRange={changeRange} ready={selectedRun?.ready_indices} />
+      <Timeline range={range} index={timeIndex} onIndex={setTimeIndex} onRange={changeRange} tracks={tracks} />
       {settingsOpen && <SettingsDrawer options={options} onClose={() => setSettingsOpen(false)}
         onApply={(next) => { setOptions(next); setSettingsOpen(false); }} />}
     </main>

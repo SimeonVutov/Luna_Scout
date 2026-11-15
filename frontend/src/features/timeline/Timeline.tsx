@@ -4,12 +4,15 @@ import type { TimeRange } from "../../api/types";
 import { Icon } from "../../Icon";
 import { clockLabel, dateLabel, finalDay, rangeForDates, snapshotAt, snapshotCount, todayRange } from "./time";
 
-export function Timeline({ range, index, onIndex, onRange, ready }: {
+/** Snapshots already computed for one site, drawn as dots under the slider. */
+export type ReadyTrack = { id: string; label?: string; color: string; ready: number[] };
+
+export function Timeline({ range, index, onIndex, onRange, tracks }: {
   range: TimeRange;
   index: number;
   onIndex: (index: number) => void;
   onRange: (range: TimeRange) => void;
-  ready?: number[];
+  tracks?: ReadyTrack[];
 }) {
   const count = snapshotCount(range);
   const instant = snapshotAt(range, index);
@@ -54,7 +57,9 @@ export function Timeline({ range, index, onIndex, onRange, ready }: {
         <div className="timeline-title">
           <h2>Timeline</h2>
           <span className="timezone">UTC</span>
-          {ready && <span className="timeline-ready">{ready.length}/{count} ready</span>}
+          {tracks && tracks.map((track) => <span key={track.id} className="timeline-ready" style={{ color: track.color }}>
+            {track.label ? `${track.label} · ` : ""}{track.ready.length}/{count} ready
+          </span>)}
         </div>
         <time dateTime={instant.toISOString()}>{dateLabel(instant)} · {clockLabel(instant)}</time>
         <button className="button secondary date-trigger" type="button" aria-expanded={editing} onClick={() => {
@@ -86,9 +91,9 @@ export function Timeline({ range, index, onIndex, onRange, ready }: {
         </div>
         <div className="track">
           <input type="range" aria-label="Timeline position" aria-valuetext={`${dateLabel(instant)} ${clockLabel(instant)} UTC`} min={0} max={count - 1} value={index} onChange={(event) => { setPlaying(false); onIndex(Number(event.target.value)); }} />
-          {ready && <div className="ready-track" aria-hidden="true">
-            {ready.map((position) => <i key={position} style={{ left: `${100 * position / Math.max(1, count - 1)}%` }} />)}
-          </div>}
+          {tracks && tracks.map((track) => <div key={track.id} className="ready-track" aria-hidden="true" style={{ color: track.color }}>
+            {track.ready.map((position) => <i key={position} style={{ left: `${100 * position / Math.max(1, count - 1)}%` }} />)}
+          </div>)}
           <div className="ticks" aria-hidden="true">
             {ticks.map((tick) => {
               const value = snapshotAt(range, Math.round(tick * (count - 1) / Math.max(1, ticks.length - 1)));
