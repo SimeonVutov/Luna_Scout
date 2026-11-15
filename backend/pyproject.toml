@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lunascout"
+version = "0.1.0"
+description = "LunaScout lunar terrain, illumination, and site catalog"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "filelock>=3.18,<4",
+    "numba>=0.62,<1",
+    "numpy>=1.26,<3",
+    "rasterio>=1.4,<2",
+    "spiceypy>=7,<9",
+    "uvicorn>=0.34,<1",
+]
+
+[project.scripts]
+lunascout-science = "lunascout.science_cli:main"
+lunascout-worker = "lunascout.jobs.worker:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["lunascout"]
