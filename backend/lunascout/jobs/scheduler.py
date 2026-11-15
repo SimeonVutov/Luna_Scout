@@ -51,6 +51,8 @@ class WorkBatch:
     run_id: str
     plan: RunPlan
     indices: tuple[int, ...]
+    # True when this batch is only the playhead sample that the dashboard is waiting for.
+    playhead_only: bool = False
 
 
 class RunQueue:
@@ -173,7 +175,8 @@ class RunQueue:
             }
             priority: int = row["priority_index"]
             indices: tuple[int, ...]
-            if priority not in computed:
+            playhead_only = priority not in computed
+            if playhead_only:
                 indices = (priority,)
             else:
                 remaining = (
@@ -192,7 +195,7 @@ class RunQueue:
                 """,
                 (time_ns(), run_id),
             )
-            return WorkBatch(run_id, plan, indices)
+            return WorkBatch(run_id, plan, indices, playhead_only)
 
     def record(self, batch: WorkBatch, index: int, reading: Reading) -> None:
         with self._connection() as db:

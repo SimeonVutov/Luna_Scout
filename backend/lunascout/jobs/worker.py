@@ -7,7 +7,7 @@ from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from time import sleep
+from time import perf_counter, sleep
 
 import numpy as np
 from filelock import FileLock, Timeout
@@ -16,6 +16,8 @@ from ..ephemeris.horizons import (
     BATCH_SIZE,
     Ephemerides,
     EphemerisError,
+    EphemerisSample,
+    HorizonsUnavailable,
     load_ephemerides_at,
 )
 from ..simulation.engine import (
@@ -25,21 +27,30 @@ from ..simulation.engine import (
     prepare_site,
     trace_snapshot,
 )
+from ..simulation.events import centre_windows
 from ..simulation.frames import SiteFootprint
+from ..terrain.horizon import HorizonMap, load_or_build_horizons, read_cached_horizons
 from ..terrain.model import TerrainError, prepare_terrain
 from .metrics import Reading, integrate
-from .plan import MODEL_REVISION, MissingScienceInputs, science_sources
+from .plan import MODEL_REVISION, MissingScienceInputs, RunPlan, science_sources
 from .scheduler import EphemerisChunk, RunQueue, WorkBatch
 
 _BATCH_SIZE = 3
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parents[3] / "DATA"
+# Waits before retrying a run whose Horizons request failed transiently.
+_HORIZONS_RETRY_DELAYS_S = (15, 60, 180)
+_HORIZON_MAPS_IN_MEMORY = 2
 logger = logging.getLogger(__name__)
+
+SourceRevision = tuple[tuple[str, str], ...]
 
 
 class Worker:
     def __init__(self, data_dir: Path, queue: RunQueue) -> None:
         self.data_dir = data_dir
         self.queue = queue
+        self.horizon_cache_dir = data_dir / "cache" / "horizons"
+        self._horizon_maps: dict[tuple[SiteFootprint, SimulationSettings, SourceRevision], HorizonMap] = {}
 
     def process(self, batch: WorkBatch) -> None:
         plan = batch.plan
@@ -47,13 +58,13 @@ class Worker:
         if plan.model_revision != MODEL_REVISION or plan.sources_sha256 != sources:
             raise ValueError("The science inputs changed. Submit a run with the new inputs.")
 
+        source_revision = tuple(sources.items())
+        prepared = self._prepared(plan.site, plan.settings, source_revision)
         if not batch.indices:
-            readings = self.queue.readings(batch.run_id)
-            self.queue.complete(batch.run_id, integrate(readings))
-            logger.info("Completed run %.12s", batch.run_id)
+            self._complete(batch.run_id, plan, prepared)
             return
 
-        prepared = self._prepared(plan.site, plan.settings, tuple(sources.items()))
+        horizons = self._horizons(plan, prepared, source_revision, batch.playhead_only)
         for index in batch.indices:
             start = (index // BATCH_SIZE) * BATCH_SIZE
             stop = min(plan.interval_count + 1, start + BATCH_SIZE)
@@ -75,7 +86,7 @@ class Worker:
                 ),
             )
 
-            snapshot = trace_snapshot(prepared, ephemerides.samples[index - start])
+            snapshot = trace_snapshot(prepared, ephemerides.samples[index - start], horizons)
             if plan.is_frame(index):
                 path = self.queue.frame_path(batch.run_id, index)
                 _save_grid(path, snapshot.grid)
@@ -83,12 +94,66 @@ class Worker:
             reading = Reading.model_validate(snapshot, from_attributes=True)
             self.queue.record(batch, index, reading)
 
+    def _complete(self, run_id: str, plan: RunPlan, prepared: PreparedSite) -> None:
+        """Find exact centre windows over the run, integrate, and publish the summary."""
+        started = perf_counter()
+        windows = centre_windows(prepared, self._run_samples(plan))
+        readings = self.queue.readings(run_id)
+        self.queue.complete(run_id, integrate(readings, windows))
+        logger.info("Completed run %.12s (centre windows in %.1f s)", run_id, perf_counter() - started)
+
+    def _horizons(
+        self,
+        plan: RunPlan,
+        prepared: PreparedSite,
+        source_revision: SourceRevision,
+        playhead_only: bool,
+    ) -> HorizonMap | None:
+        """The run's horizon map, or None to trace every ray directly.
+
+        The playhead's first result is traced directly while no map exists yet, so
+        the dashboard does not wait for the one-off horizon build.
+        """
+        if plan.settings.ray_method == "direct" or not len(prepared.solar_origins_m):
+            return None
+
+        key = (plan.site, plan.settings, source_revision)
+        if key in self._horizon_maps:
+            return self._horizon_maps[key]
+
+        terrain, origins_m = prepared.terrain, prepared.solar_origins_m
+        horizons = read_cached_horizons(terrain, origins_m, self.horizon_cache_dir)
+        if horizons is None:
+            if playhead_only:
+                return None
+            started = perf_counter()
+            horizons = load_or_build_horizons(terrain, origins_m, self.horizon_cache_dir)
+            logger.info(
+                "Built terrain horizons for %d receivers in %.1f s",
+                len(origins_m),
+                perf_counter() - started,
+            )
+
+        if len(self._horizon_maps) >= _HORIZON_MAPS_IN_MEMORY:
+            self._horizon_maps.pop(next(iter(self._horizon_maps)))
+        self._horizon_maps[key] = horizons
+        return horizons
+
+    def _run_samples(self, plan: RunPlan) -> list[EphemerisSample]:
+        """All integration epochs, loaded in the same cached batches used while processing."""
+        samples: list[EphemerisSample] = []
+        for start in range(0, plan.interval_count + 1, BATCH_SIZE):
+            stop = min(plan.interval_count + 1, start + BATCH_SIZE)
+            epochs = tuple(plan.at(index) for index in range(start, stop))
+            samples.extend(self._ephemerides(epochs).samples)
+        return samples
+
     @lru_cache(maxsize=2)
     def _prepared(
         self,
         site: SiteFootprint,
         settings: SimulationSettings,
-        _source_revision: tuple[tuple[str, str], ...],
+        _source_revision: SourceRevision,
     ) -> PreparedSite:
         """Reuse receiver geometry only for matching settings and source revisions."""
         terrain = prepare_terrain(self.data_dir, site)
@@ -121,6 +186,7 @@ def main() -> None:
     queue = RunQueue(args.data_dir)
     queue.initialize()
     worker = Worker(args.data_dir, queue)
+    horizons_retries: dict[str, int] = {}
     lock = FileLock(queue.directory / "worker.lock", timeout=0)
     try:
         with lock:
@@ -134,6 +200,31 @@ def main() -> None:
                     continue
                 try:
                     worker.process(batch)
+                    horizons_retries.pop(batch.run_id, None)
+                except HorizonsUnavailable as exc:
+                    # Saved samples stay recorded, so a later attempt resumes the run.
+                    attempt = horizons_retries.get(batch.run_id, 0)
+                    if attempt < len(_HORIZONS_RETRY_DELAYS_S):
+                        horizons_retries[batch.run_id] = attempt + 1
+                        delay = _HORIZONS_RETRY_DELAYS_S[attempt]
+                        logger.warning(
+                            "Run %.12s: %s Retrying in %d s (attempt %d of %d).",
+                            batch.run_id,
+                            exc,
+                            delay,
+                            attempt + 1,
+                            len(_HORIZONS_RETRY_DELAYS_S),
+                            exc_info=exc.__cause__ is not None,
+                        )
+                        sleep(delay)
+                        continue
+
+                    horizons_retries.pop(batch.run_id, None)
+                    logger.warning("Run %.12s failed: %s", batch.run_id, exc, exc_info=True)
+                    queue.fail(
+                        batch.run_id,
+                        f"{exc} Saved snapshots are kept; retry the run to resume it.",
+                    )
                 except (EphemerisError, TerrainError, MissingScienceInputs, ValueError) as exc:
                     # Keep the chained cause (DNS, TLS, timeout, HTTP) in the log;
                     # the queue message stays short for the dashboard.

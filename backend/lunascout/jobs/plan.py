@@ -14,7 +14,7 @@ from ..simulation.frames import SiteFootprint
 from ..terrain.model import LOCAL_DEM_NAMES, REGIONAL_DEM_NAMES
 
 # Change this when the solver or output meaning changes so old runs stay immutable.
-MODEL_REVISION = 2
+MODEL_REVISION = 3
 DEFAULT_INTEGRATION_MINUTES = 15
 MAX_INTERVALS = 10_000
 
