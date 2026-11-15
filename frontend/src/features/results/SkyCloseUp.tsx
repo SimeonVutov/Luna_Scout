@@ -1,4 +1,5 @@
 import type { BodyView } from "../../api/types";
+import "./skyCloseUp.css";
 
 const width = 260;
 const height = 130;

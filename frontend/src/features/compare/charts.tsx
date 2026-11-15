@@ -3,6 +3,7 @@ import type { MouseEvent, ReactNode } from "react";
 import type { Visibility, VisibilityWindow } from "../../api/types";
 import { slotColor, slotLabel } from "./slots";
 import type { Slot } from "./slots";
+import "./charts.css";
 
 const shortDay = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 const clock = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC", hourCycle: "h23" });

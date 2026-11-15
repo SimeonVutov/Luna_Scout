@@ -1,0 +1,186 @@
+.result-site {
+  margin: 3px 0 22px;
+}
+
+.result-site h3 {
+  overflow-wrap: anywhere;
+  font-size: 1.12rem;
+  font-weight: 640;
+}
+
+.result-site p,
+.result-section time {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: .69rem;
+  line-height: 1.45;
+}
+
+.result-section {
+  margin-top: 19px;
+}
+
+.result-section h4,
+.sky-chart figcaption {
+  font-size: .75rem;
+  font-weight: 630;
+}
+
+.metrics {
+  margin: 5px 0 0;
+}
+
+.metrics > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 7px;
+  padding: 9px 0;
+  font-size: .74rem;
+  border-bottom: 1px solid var(--edge);
+}
+
+.metrics dt,
+.sky-closeup.empty {
+  color: var(--muted);
+}
+
+.metrics dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.visible-value,
+.quality.fine {
+  color: var(--accent);
+}
+
+.sky-chart {
+  margin: 20px 0 0;
+}
+
+.sky-chart svg {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  margin-top: 6px;
+}
+
+.sky-chart svg text {
+  font-family: inherit;
+  font-size: 8px;
+  fill: var(--muted);
+}
+
+.chart-guide {
+  stroke: #414b55;
+  stroke-width: 1;
+}
+
+.chart-guide.playhead {
+  stroke: #aab2bd;
+  opacity: .55;
+}
+
+.chart-sun {
+  fill: none;
+  stroke-width: 1.35;
+  stroke: var(--accent);
+}
+
+.chart-earth {
+  fill: none;
+  stroke-width: 1.35;
+  stroke: #d8dfe9;
+}
+
+.chart-dot.sun {
+  fill: var(--accent);
+}
+
+.chart-dot.earth {
+  fill: #d8dfe9;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: .62rem;
+}
+
+.chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chart-legend span::before {
+  width: 9px;
+  content: "";
+  border-top: 2px solid #d8dfe9;
+}
+
+.chart-legend .sun::before {
+  border-color: var(--accent);
+}
+
+.run-action {
+  width: 100%;
+}
+
+.science-details {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: .71rem;
+}
+
+.science-details summary {
+  padding: 3px 0;
+  cursor: pointer;
+}
+
+.result-note {
+  margin-top: 8px;
+  font-size: .71rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.window-list {
+  padding: 0;
+  margin: 4px 0;
+  list-style: none;
+  line-height: 1.4;
+}
+
+.window-list li {
+  display: grid;
+  gap: 2px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--edge);
+}
+
+.window-list strong {
+  color: #d5e1e1;
+  font-weight: 560;
+}
+
+/* Larger, summary-first numbers in the comparison */
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  margin: 0;
+  background: var(--edge);
+  border-radius: 8px;
+}
+
+.science-details summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}

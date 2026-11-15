@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "../../Icon";
 import { allLayers, layerLabel } from "./mapLayers";
 import type { LayerAvailability, MapLayer } from "./mapLayers";
+import "./layers.css";
 
 /**
  * A plain list of the layers that can be drawn on the ground. Layers that are not available yet

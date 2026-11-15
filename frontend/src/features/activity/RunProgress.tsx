@@ -1,6 +1,7 @@
 import type { RunStatus } from "../../api/types";
 import { Icon } from "../../Icon";
 import { wholePercent } from "../results/format";
+import "./activity.css";
 
 /**
  * One run's state: a live bar while it calculates, "Simulation done" when finished.

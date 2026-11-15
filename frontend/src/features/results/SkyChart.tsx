@@ -1,4 +1,5 @@
 import type { Reading, TimeRange } from "../../api/types";
+import "./results.css";
 
 const left = 22;
 const top = 8;

@@ -12,6 +12,7 @@ import { rayColours, spaceScene } from "./spaceScene";
 import type { SpaceScene } from "./spaceScene";
 import { useSiteRays } from "./useSiteRays";
 import { useSky } from "./useSky";
+import "./space.css";
 
 const distance = new Intl.NumberFormat("en-GB", { maximumSignificantDigits: 3 });
 
@@ -154,17 +155,17 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
   }
 
   const rayHint = !selected ? "Select a site to see its rays" : !supported ? "Rays are available for sites south of 60°S" : undefined;
-  return <section className={compact ? "viewport terrain-viewport space-viewport space-compact" : "viewport terrain-viewport space-viewport"} aria-label="3D view of the Moon, the Sun and Earth">
-    <div className="terrain-canvas" ref={host} />
+  return <section className={compact ? "viewport space-viewport space-compact" : "viewport space-viewport"} aria-label="3D view of the Moon, the Sun and Earth">
+    <div className="space-canvas" ref={host} />
     <div className="space-labels" ref={labels} />
-    <div className="terrain-title">
+    <div className="space-title">
       <h2>{standing && selected ? selected.name : "Moon, Sun and Earth"}</h2>
       <p ref={readout} />
     </div>
 
-    {unsupported ? <div className="terrain-status" role="alert"><p>The 3D view needs WebGL 2. You can continue in the map view.</p></div> : <>
-      <div className="terrain-controls">
-        <span className="terrain-north" ref={compass} aria-label="North direction"><i aria-hidden="true">↑</i>N</span>
+    {unsupported ? <div className="stage-status" role="alert"><p>The 3D view needs WebGL 2. You can continue in the map view.</p></div> : <>
+      <div className="space-controls">
+        <span className="space-north" ref={compass} aria-label="North direction"><i aria-hidden="true">↑</i>N</span>
         <button className="button secondary" type="button" title="Back to the view of the south pole" onClick={() => scene.current?.showPole()}>Reset view</button>
         <button className="button secondary" type="button" disabled={!selected} onClick={() => selected && scene.current?.showSite(selected)}>Go to site</button>
         <button className="button secondary" type="button" aria-pressed={standing} disabled={!supported}
@@ -200,7 +201,7 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
         <LayerLegend layer={resultLayer} />
       </div>
 
-      <div className="terrain-bottom">
+      <div className="space-bottom">
         {problem && <p role="alert">{problem}</p>}
         {!sample && <p role="status">{sky.error ?? "Loading the Sun and Earth positions from JPL Horizons…"}</p>}
         <p>{standing ? "Drag to look around · Scroll to zoom · Click Sun or Earth to face it"

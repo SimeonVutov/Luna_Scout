@@ -5,6 +5,7 @@ import { Legend, LineChart, PairedBars, WindowStrips, niceMax } from "./charts";
 import type { BarGroup, LineSeries, StripRow } from "./charts";
 import { slotColor, slotLabel, slots } from "./slots";
 import type { Slot } from "./slots";
+import "./compare.css";
 
 type SummaryPane = { site: Site | null; run: RunStatus | null; series: Reading[]; context: SiteContext | null; insight: SiteInsight | null };
 

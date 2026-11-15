@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { RayMethod, Receiver, SimulationOptions } from "../../api/types";
 import { Icon } from "../../Icon";
+import "./settings.css";
 
 const receivers: { value: Receiver; label: string; note: string }[] = [
   { value: "vertical_tracking", label: "Vertical panel", note: "Turns to face the Sun, like polar lander arrays." },

@@ -1,0 +1,68 @@
+.sky-closeup {
+  margin: 10px 0 0;
+}
+
+.sky-closeup svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+}
+
+.sky-closeup figcaption {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: .72rem;
+}
+
+.sky-closeup figcaption strong {
+  font-weight: 640;
+}
+
+.sky-closeup figcaption span {
+  font-variant-numeric: tabular-nums;
+}
+
+.sky-closeup figcaption small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: .66rem;
+}
+
+.sky-closeup .level-line {
+  stroke: #34506b;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.sky-closeup .skyline-fill {
+  fill: #55606c;
+}
+
+.sky-closeup .skyline-edge {
+  stroke: #c3cbd4;
+  stroke-width: 1.2;
+}
+
+.sky-closeup .scale-note {
+  font-size: 7px;
+  font-family: inherit;
+  fill: #8b96a3;
+}
+
+.sky-closeup .hidden-note {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: inherit;
+  fill: #e9eeef;
+}
+
+.sky-closeup .hidden-detail {
+  font-size: 8.5px;
+  font-family: inherit;
+  fill: #c3cbd4;
+}

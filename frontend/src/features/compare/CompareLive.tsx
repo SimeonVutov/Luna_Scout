@@ -11,6 +11,7 @@ import { slotColor, slotLabel, slots } from "./slots";
 
 const SpaceView = lazy(() => import("../space/SpaceView").then((module) => ({ default: module.SpaceView })));
 import type { Slot } from "./slots";
+import "./compare.css";
 
 type PaneData = {
   site: Site | null;
@@ -96,7 +97,7 @@ function Pane({ slot, data, at, layer, onLayerChange, view, range, timeIndex, op
       </div>
     </header>
     <div className="pane-map">
-      {view === "3d" ? <Suspense fallback={<p className="terrain-status" role="status">Opening the 3D view…</p>}>
+      {view === "3d" ? <Suspense fallback={<p className="stage-status" role="status">Opening the 3D view…</p>}>
         <SpaceView compact active sites={[site]} selected={site} focus={cameraTarget} run={data.run}
           range={range} timeIndex={timeIndex} options={options} sunlight={data.sunlight} context={data.context}
           layerState={spaceLayers} onLayers={onSpaceLayers} onSelect={() => undefined} />

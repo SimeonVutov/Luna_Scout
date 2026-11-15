@@ -4,6 +4,7 @@ import { isContextLayer, layerHelp, layerLabel } from "./mapLayers";
 import type { MapLayer } from "./mapLayers";
 import { SlopeLegend } from "./SlopeLegend";
 import { SunlightLegend } from "./SunlightLegend";
+import "./layers.css";
 
 /** The key for whichever layer is drawn, with a sentence saying what it means. */
 export function LayerLegend({ layer }: { layer: MapLayer }) {

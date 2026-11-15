@@ -5,6 +5,7 @@ import { ago, rangeLabel } from "../results/format";
 import { coordinatesLabel } from "../sites/referenceSites";
 import { RunProgress } from "./RunProgress";
 import type { ApiProblem } from "./useActivity";
+import "./activity.css";
 
 const receiverShort = { vertical_tracking: "Vertical panel", terrain: "Ground", horizontal: "Flat plate", fixed: "Fixed plane" } as const;
 

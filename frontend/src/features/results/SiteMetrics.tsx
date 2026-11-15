@@ -1,6 +1,7 @@
 import type { Reading, RunStatus, SiteInsight, Visibility } from "../../api/types";
 import { bound, countdown, decimal, earthLabel, energy, longestLabel, ratio, sunLabel, windowTime } from "./format";
 import { detailLabel, terrainQuality } from "./TerrainSection";
+import "./statTiles.css";
 
 const receiverNoun = { vertical_tracking: "vertical panel", terrain: "ground", horizontal: "flat plate", fixed: "receiver" } as const;
 

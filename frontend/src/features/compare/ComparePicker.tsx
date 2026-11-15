@@ -4,6 +4,7 @@ import { isActive } from "../results/useScience";
 import { coordinatesLabel } from "../sites/referenceSites";
 import { slotColor, slotLabel, slots } from "./slots";
 import type { Slot } from "./slots";
+import "./comparePicker.css";
 
 type PickerProps = {
   sites: Site[];

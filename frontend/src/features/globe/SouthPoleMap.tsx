@@ -21,6 +21,7 @@ import { MapCompass } from "./MapCompass";
 import type { Orientation } from "./MapCompass";
 import { detailExtent, detailLayer, edge, geographic, globalExtent, globalImagery, polar, polarImagery } from "./polarImagery";
 import "ol/ol.css";
+import "../globe/map.css";
 
 type MapMode = "south" | "global";
 export type { MapLayer };

@@ -1,0 +1,190 @@
+.chart {
+  position: relative;
+  margin-top: 6px;
+}
+
+.chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart .grid-line {
+  stroke: #29313a;
+  stroke-width: 1;
+}
+
+.chart .axis-text {
+  font-size: 8.5px;
+  font-family: inherit;
+  fill: var(--muted);
+}
+
+.chart .end-label {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: inherit;
+}
+
+.chart .playhead-line {
+  stroke: #aab2bd;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: .7;
+}
+
+.chart .crosshair {
+  stroke: #5a6672;
+  stroke-width: 1;
+}
+
+.chart-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+  color: var(--text-soft);
+  font-size: .73rem;
+}
+
+.chart-key li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.chart-key.states {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: .7rem;
+}
+
+.swatch {
+  display: inline-block;
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.swatch.clear {
+  background: var(--accent);
+}
+
+.swatch.blocked,
+.strip-segment.blocked {
+  background: #2c3541;
+}
+
+.swatch.unknown,
+.strip-segment.unknown {
+  background: repeating-linear-gradient(135deg, #5c6672 0 2px, #2c3541 2px 5px);
+}
+
+.chart-tooltip {
+  position: absolute;
+  top: 6px;
+  z-index: 3;
+  display: grid;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 1px solid #404a55;
+  border-radius: 7px;
+  background: #1b2027f2;
+  box-shadow: 0 6px 20px #0006;
+  font-size: .72rem;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.chart-tooltip strong {
+  font-weight: 620;
+}
+
+.chart-tooltip span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+.strips {
+  --lead: 112px;
+  display: grid;
+  gap: 8px;
+}
+
+.strip-row,
+.strip-axis {
+  display: grid;
+  grid-template-columns: calc(var(--lead) - 8px) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.strip-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-soft);
+  font-size: .73rem;
+}
+
+.strip-track {
+  position: relative;
+  overflow: hidden;
+  height: 20px;
+  border-radius: 4px;
+  background: #232b34;
+}
+
+.strip-track.axis {
+  overflow: visible;
+  height: 14px;
+  background: transparent;
+}
+
+.strip-track.axis span {
+  position: absolute;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: .64rem;
+}
+
+.strip-segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+}
+
+.strip-pending {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-items: center;
+  padding-left: 8px;
+  color: var(--muted);
+  font-size: .66rem;
+}
+
+.strip-playhead {
+  position: absolute;
+  top: -2px;
+  bottom: 22px;
+  pointer-events: none;
+  border-left: 1px dashed #aab2bd;
+  opacity: .7;
+}
+
+.strip-tooltip {
+  top: 0;
+  transform: translate(-50%, -110%);
+}
+
+@media (max-width: 900px) {
+  .strips {
+    --lead: 92px;
+  }
+}

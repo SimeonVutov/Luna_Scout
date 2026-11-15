@@ -1,0 +1,49 @@
+.stat-tiles > div {
+  padding: 11px 13px;
+  min-width: 0;
+  background: var(--surface-raised);
+}
+
+.stat-tiles dt {
+  color: var(--muted);
+  font-size: .82rem;
+}
+
+.stat-tiles dd {
+  margin: 5px 0 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.quality.regional,
+.warn-value {
+  color: #f0c878;
+}
+
+.quality.coarse,
+.quality-note.coarse {
+  color: #f2a08f;
+}
+
+.stat-tiles.headline dd {
+  font-size: 1.55rem;
+  font-weight: 640;
+  letter-spacing: -.02em;
+}
+
+.more-tiles {
+  margin-top: 8px;
+}
+
+.more-tiles summary {
+  padding: 4px 0 8px;
+  color: var(--muted);
+  font-size: .82rem;
+  cursor: pointer;
+}
+
+.more-tiles .stat-tiles {
+  margin-top: 2px;
+}

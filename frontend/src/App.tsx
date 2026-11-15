@@ -307,7 +307,7 @@ export function App() {
               />
           </div>
           <div className="stage-view" hidden={!inSpace}>
-            <Suspense fallback={<div className="terrain-status" role="status">Opening the 3D view…</div>}>
+            <Suspense fallback={<div className="stage-status" role="status">Opening the 3D view…</div>}>
               <SpaceView active={inSpace && exploring} sites={sites} selected={selected} focus={cameraTarget} run={selectedRun}
                 layerState={spaceLayers} onLayers={setSpaceLayers}
                 range={range} timeIndex={timeIndex} options={options} sunlight={sunlight} context={selectedContext} onSelect={selectSite} />

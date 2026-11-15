@@ -4,6 +4,7 @@ import type { RunStatus, Site, SiteSpec } from "../../api/types";
 import { Icon } from "../../Icon";
 import { RunProgress } from "../activity/RunProgress";
 import { coordinatesLabel, maximumSiteRadius, referenceGroups } from "./referenceSites";
+import "./sites.css";
 
 function SiteForm({ site, onChange, onSave, onCancel, busy }: {
   site: SiteSpec;

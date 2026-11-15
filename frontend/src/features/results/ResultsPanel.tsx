@@ -7,6 +7,7 @@ import { SkyCloseUp } from "./SkyCloseUp";
 import { TerrainSection } from "./TerrainSection";
 import { PeriodMetricsList, SelectedTimeMetrics } from "./SiteMetrics";
 import { isActive } from "./useScience";
+import "./results.css";
 
 type PanelProps = {
   site: Site | null;

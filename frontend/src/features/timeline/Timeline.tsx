@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import type { TimeRange } from "../../api/types";
 import { Icon } from "../../Icon";
 import { clockLabel, dateLabel, finalDay, rangeForDates, snapshotAt, snapshotCount, todayRange } from "./time";
+import "./timeline.css";
 
 const dayFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 const monthFormat = new Intl.DateTimeFormat("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
