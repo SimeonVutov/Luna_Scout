@@ -55,6 +55,7 @@ export type Reading = {
     mean_visible_sun_fraction: Bounds;
     mean_irradiance_on_known_ground_w_m2: Bounds | null;
     half_disk_lit_area_fraction?: Bounds | null;
+    usable_area_fraction?: Bounds | null;
   };
 };
 
@@ -118,4 +119,37 @@ export type TerrainPreview = {
   center_height_m: number | null;
   sources: string[];
   dem_spacings_m: number[];
+};
+
+export type TerrainSummary = {
+  known_area_fraction: number;
+  /** Share of the site's area by terrain posting in metres, such as { "5": 1 }. */
+  detail_area_fractions: Record<string, number>;
+  centre_detail_m: number | null;
+  centre_height_m: number | null;
+  height_min_m: number | null;
+  height_max_m: number | null;
+  slope_mean_deg: number | null;
+  slope_p95_deg: number | null;
+  slope_max_deg: number | null;
+  /** Share of the site at or below each slope limit in degrees, such as { "10": 0.82 }. */
+  gentle_area_fractions: Record<string, number>;
+  slope_baseline_m: number;
+};
+
+export type SlopeGrid = {
+  offsets_m: number[];
+  inside_site: boolean[];
+  slope_deg: (number | null)[];
+};
+
+export type SiteInsight = {
+  summary: TerrainSummary;
+  slope_grid: SlopeGrid;
+  skyline_azimuth_step_deg: number;
+  collector_height_m: number;
+  mast_height_m: number;
+  /** Terrain horizon elevation above the level plane per azimuth bin, clockwise from north. */
+  collector_skyline_deg: (number | null)[] | null;
+  mast_skyline_deg: (number | null)[] | null;
 };

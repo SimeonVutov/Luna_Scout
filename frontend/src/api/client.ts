@@ -1,4 +1,4 @@
-import type { FramePayload, Reading, RunRequest, RunStatus, Site, SiteSpec, TerrainPreview } from "./types";
+import type { FramePayload, Reading, RunRequest, RunStatus, Site, SiteInsight, SiteSpec, TerrainPreview } from "./types";
 
 async function send<T>(path: string, method = "GET", body?: unknown, signal?: AbortSignal): Promise<T> {
   let response: Response;
@@ -64,4 +64,11 @@ export function runSnapshot(id: string, index: number, signal: AbortSignal) {
 
 export function terrainPreview(site: SiteSpec, scale: "site" | "region", signal: AbortSignal) {
   return send<TerrainPreview>(`/terrain/preview?scale=${scale}`, "POST", site, signal);
+}
+
+export function siteInsight(
+  site: SiteSpec, settings: { grid_spacing_m: number; collector_height_m: number; mast_height_m: number }, signal: AbortSignal,
+) {
+  const query = new URLSearchParams(Object.entries(settings).map(([name, value]) => [name, String(value)]));
+  return send<SiteInsight>(`/terrain/insight?${query}`, "POST", site, signal);
 }
