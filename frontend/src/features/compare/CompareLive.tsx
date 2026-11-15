@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from "react";
-import type { Reading, RunStatus, SimulationOptions, Site, SiteInsight, SunlightGrid, TimeRange } from "../../api/types";
+import type { Reading, RunStatus, SimulationOptions, Site, SiteContext, SiteInsight, SunlightGrid, TimeRange } from "../../api/types";
 import { Icon } from "../../Icon";
 import { SouthPoleMap } from "../globe/SouthPoleMap";
 import type { MapLayer } from "../globe/SouthPoleMap";
@@ -18,6 +18,7 @@ type PaneData = {
   reading: Reading | null;
   sunlight: SunlightGrid | null;
   insight: SiteInsight | null;
+  context: SiteContext | null;
 };
 
 type LiveProps = {
@@ -82,7 +83,7 @@ function Pane({ slot, data, at, layer, onLayerChange, view, range, timeIndex, op
         <button type="button" className="button quiet" onClick={() => setCameraTarget({ ...site })}><Icon name="target" size={15} /> Recentre</button>
       </div>
       <div className="pane-body">
-        <StatTiles reading={data.reading} run={data.run} at={at} insight={data.insight} />
+        <div className="pane-stats"><StatTiles reading={data.reading} run={data.run} at={at} insight={data.insight} /></div>
         <div className="pane-sky">
           <div className="segmented compact" role="radiogroup" aria-label="Body at the skyline">
             {(["Sun", "Earth"] as const).map((name) => <button key={name} type="button" role="radio" aria-checked={body === name}
@@ -97,11 +98,11 @@ function Pane({ slot, data, at, layer, onLayerChange, view, range, timeIndex, op
     <div className="pane-map">
       {view === "3d" ? <Suspense fallback={<p className="terrain-status" role="status">Opening the 3D view…</p>}>
         <SpaceView compact active sites={[site]} selected={site} focus={cameraTarget} run={data.run}
-          range={range} timeIndex={timeIndex} options={options} sunlight={data.sunlight}
+          range={range} timeIndex={timeIndex} options={options} sunlight={data.sunlight} context={data.context}
           layerState={spaceLayers} onLayers={onSpaceLayers} onSelect={() => undefined} />
       </Suspense> : <SouthPoleMap southOnly sites={[site]} selectedId={site.id} draft={null} picking={false}
         onPick={() => undefined} onSelect={() => undefined} cameraTarget={cameraTarget}
-        sunlight={data.sunlight} slope={data.insight?.slope_grid ?? null} layer={layer} onLayerChange={onLayerChange} />}
+        sunlight={data.sunlight} slope={data.insight?.slope_grid ?? null} context={data.context} layer={layer} onLayerChange={onLayerChange} />}
     </div>
   </section>;
 }

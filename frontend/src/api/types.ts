@@ -181,6 +181,24 @@ export type TerrainSummary = {
   slope_baseline_m: number;
 };
 
+/** NASA's long-term maps over a site, as fractions between 0 and 1, plus site-wide means. */
+export type SiteContext = {
+  offsets_m: number[];
+  inside_site: boolean[];
+  average_sunlight: (number | null)[];
+  average_earth: (number | null)[];
+  permanent_shadow: (number | null)[];
+  sky_openness: (number | null)[];
+  summary: {
+    average_sunlight: number | null;
+    average_earth: number | null;
+    /** Share of the site that never sees the Sun. */
+    permanent_shadow_share: number | null;
+    sky_openness: number | null;
+    posting_m: Record<string, number | null>;
+  };
+};
+
 export type SlopeGrid = {
   offsets_m: number[];
   inside_site: boolean[];

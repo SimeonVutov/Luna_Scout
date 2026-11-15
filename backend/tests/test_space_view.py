@@ -94,3 +94,28 @@ def test_centre_ray_fans_agree_with_the_simulation_snapshot():
     # The new per-point Earth line of sight equals the centre mast's Earth fraction there.
     assert snapshot.grid.earth_visible_fraction_lower[centre, centre] == snapshot.earth_disk_visible_fraction.lower
     assert snapshot.grid.earth_visible_fraction_upper[centre, centre] == snapshot.earth_disk_visible_fraction.upper
+
+
+def test_context_maps_read_the_right_place_in_nasa_files():
+    from math import radians, tan
+
+    from lunascout.simulation.frames import MOON_RADIUS_M, local_axes
+    from lunascout.terrain.context_maps import polar_xy_m, sample_context_map
+
+    # Stereographic ρ = 2R·tan((90° + φ)/2): longitude 0 lies on +y, longitude 90°E on +x.
+    _, _, up = local_axes(-85.0, 0.0)
+    x_m, y_m = polar_xy_m(up[None, :])
+    assert x_m[0] == pytest.approx(0, abs=1e-6)
+    assert y_m[0] == pytest.approx(2 * MOON_RADIUS_M * tan(radians(2.5)))
+
+    if not (_DATA_DIR / "raw/context/LPSR_85S_060M_201608.TIF").is_file():
+        pytest.skip("The NASA long-term maps are required (lunascout-science fetch-data).")
+
+    # Shackleton crater's floor never sees the Sun; the pole itself is lit about a quarter of the time.
+    _, _, shackleton = local_axes(-89.9, 129.78)
+    x_m, y_m = polar_xy_m(shackleton[None, :])
+    assert sample_context_map(_DATA_DIR, "permanent_shadow", x_m, y_m).values[0] == 1.0
+    assert sample_context_map(_DATA_DIR, "average_sunlight", x_m, y_m).values[0] == 0.0
+    _, _, pole = local_axes(-90.0, 0.0)
+    x_m, y_m = polar_xy_m(pole[None, :])
+    assert 0.1 < sample_context_map(_DATA_DIR, "average_sunlight", x_m, y_m).values[0] < 0.5

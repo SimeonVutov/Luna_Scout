@@ -89,6 +89,7 @@ Maps are cached in `cache/horizons/`. The cache key covers the terrain checksums
 | `GET /api/runs/{id}/provenance` | Data checksums and Horizons reply digests |
 | `GET /api/terrain/tiles/{level}/{row}/{column}` | LOLA heights of one tile (65×65 nodes plus a one-node border, little-endian float32, north to south) on the same south-polar tile grid as NASA Moon Trek imagery. Levels 0–13 reach 4 m spacing. Saved under `cache/terrain_tiles`. |
 | `GET /api/sky?start_utc&end_utc&integration_minutes&index` | Sun and Earth positions (Moon-fixed metres) for the Horizons batch holding that sample. Uses the same batches as simulation runs, so replies are shared. |
+| `POST /api/terrain/context?grid_spacing_m=` | NASA's long-term maps over a site on the simulation's grid, with area-weighted means: average sunlight and Earth visibility (18.6 years), permanent-shadow share and open sky. Read from `raw/context` (60 m inside 85°S, 240 m to 65°S). |
 | `GET /api/runs/{id}/rays/{index}` | The 3D view's rays for one published snapshot: Sun-disk rays from about 40 evenly spaced grid points (the simulation's own rays) and Earth-disk rays from the same points at mast height (an illustration; the simulation reports Earth only at the centre mast). The worker saves origins, clear/blocked/unresolved and blocking distances with each frame, so this needs no terrain and is fast. Frames saved before this existed return 404. |
 | `POST /api/terrain/rays` | The same rays traced on demand for a time that has no saved frame, plus the centre-mast fans. Loads the site's terrain, so the first call takes seconds. |
 
@@ -97,3 +98,5 @@ Maps are cached in `cache/horizons/`. The cache key covers the terrain checksums
 - Terrain support covers 60°S–90°S, and 5 m detail exists only around the 10 sites listed above.
 - About 90% of the 5 m cells are interpolated between LOLA tracks (Barker et al. 2021). Grid spacing is not the same as measured detail.
 - Events shorter than one minute can be missed. Reflected light and Earthshine are not modelled.
+
+`raw/context` holds NASA Goddard's illumination products (`AVGVISIB_*`, `LPSR_*`, `SKYV_*`), about 150 MB, downloaded by `fetch-data` from `pgda.gsfc.nasa.gov`.

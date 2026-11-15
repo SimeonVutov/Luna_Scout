@@ -23,6 +23,7 @@ from .ephemeris.horizons import (
 )
 from .simulation.engine import SimulationSettings, Snapshot, calculate_snapshot
 from .simulation.frames import MOON_RADIUS_M, SiteFootprint
+from .terrain.context_maps import CONTEXT_FILE_NAMES, ILLUMINATION_URL
 from .terrain.model import (
     LOCAL_DEM_NAMES,
     LOCAL_DEM_SITES,
@@ -151,6 +152,11 @@ def _fetch_data(data_dir: Path) -> None:
     inputs.extend(
         (terrain_dir / name, f"{_GODDARD_DATA_URL}/LOLA_5mpp/{site}/{name}")
         for site, name in zip(LOCAL_DEM_SITES, LOCAL_DEM_NAMES, strict=True)
+    )
+
+    inputs.extend(
+        (data_dir / "raw" / "context" / name, f"{ILLUMINATION_URL}/{name}")
+        for name in CONTEXT_FILE_NAMES
     )
 
     for path, url in inputs:

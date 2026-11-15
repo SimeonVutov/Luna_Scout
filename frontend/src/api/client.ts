@@ -1,4 +1,4 @@
-import type { FramePayload, Reading, RunList, RunRequest, RunStatus, RunRays, SimulationOptions, Site, SiteInsight, SiteRays, SiteSpec, SkyBatch, TimeRange } from "./types";
+import type { FramePayload, Reading, RunList, RunRequest, RunStatus, RunRays, SimulationOptions, Site, SiteContext, SiteInsight, SiteRays, SiteSpec, SkyBatch, TimeRange } from "./types";
 
 /** A failed API call. `status` is null when the server could not be reached at all. */
 export class ApiError extends Error {
@@ -101,6 +101,11 @@ export function siteInsight(
 ) {
   const query = new URLSearchParams(Object.entries(settings).map(([name, value]) => [name, String(value)]));
   return send<SiteInsight>(`/terrain/insight?${query}`, "POST", site, signal);
+}
+
+/** NASA's long-term maps over a site: average sunlight and Earth visibility, shadow, open sky. */
+export function siteContext(site: SiteSpec, gridSpacingM: number, signal: AbortSignal) {
+  return send<SiteContext>(`/terrain/context?grid_spacing_m=${gridSpacingM}`, "POST", site, signal);
 }
 
 export function listRuns(signal: AbortSignal) {

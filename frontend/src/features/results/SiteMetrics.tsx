@@ -50,20 +50,28 @@ export function StatTiles({ reading, run, at, insight }: { reading: Reading | nu
 
   const states = bodyStates(reading, run, at);
   const summary = reading.summary;
-  const tiles: { label: string; value: string; tone?: "good" | "warn" }[] = [
-    { label: "Lit · any Sun", value: bound(summary.lit_area_fraction, ratio) },
-    { label: "Lit · ≥ half Sun", value: bound(summary.half_disk_lit_area_fraction, ratio) },
-    { label: "Lit and ≤ 10°", value: bound(summary.usable_area_fraction, ratio) },
-    { label: `On ${receiverLabel(run)}`, value: bound(summary.mean_irradiance_on_known_ground_w_m2, decimal, " W/m²") },
+  type Tile = { label: string; value: string; tone?: "good" | "warn" };
+  const headline: Tile[] = [
+    { label: "Lit area · any Sun", value: bound(summary.lit_area_fraction, ratio) },
+    { label: "Lit and gentle (≤ 10°)", value: bound(summary.usable_area_fraction, ratio) },
     { label: "Sun at centre", value: states.sun, tone: states.sunState === "clear" ? "good" : undefined },
     { label: "Earth at mast", value: states.earth, tone: states.earthState === "clear" ? "good" : undefined },
-    { label: "Earth disk", value: bound(reading.earth_disk_visible_fraction, ratio) },
-    ...(summary.earth_visible_area_fraction ? [{ label: "Area seeing Earth", value: bound(summary.earth_visible_area_fraction, ratio) }] : []),
-    ...(insight ? [{ label: "Terrain", value: detailLabel(insight.summary), tone: terrainQuality(insight.summary) === "fine" ? undefined : "warn" as const }] : []),
   ];
-  return <dl className="stat-tiles">
-    {tiles.map((tile) => <div key={tile.label}><dt>{tile.label}</dt><dd className={tile.tone === "good" ? "visible-value" : tile.tone === "warn" ? "warn-value" : ""}>{tile.value}</dd></div>)}
-  </dl>;
+  const more: Tile[] = [
+    { label: "Lit · at least half the Sun", value: bound(summary.half_disk_lit_area_fraction, ratio) },
+    { label: `Irradiance on ${receiverLabel(run)}`, value: bound(summary.mean_irradiance_on_known_ground_w_m2, decimal, " W/m²") },
+    { label: "Earth disk visible", value: bound(reading.earth_disk_visible_fraction, ratio) },
+    ...(summary.earth_visible_area_fraction ? [{ label: "Area seeing Earth", value: bound(summary.earth_visible_area_fraction, ratio) }] : []),
+    ...(insight ? [{ label: "Terrain detail", value: detailLabel(insight.summary), tone: terrainQuality(insight.summary) === "fine" ? undefined : "warn" as const }] : []),
+  ];
+  const render = (tiles: Tile[]) => tiles.map((tile) => <div key={tile.label}><dt>{tile.label}</dt><dd className={tile.tone === "good" ? "visible-value" : tile.tone === "warn" ? "warn-value" : ""}>{tile.value}</dd></div>);
+  return <>
+    <dl className="stat-tiles headline">{render(headline)}</dl>
+    <details className="more-tiles">
+      <summary>More details</summary>
+      <dl className="stat-tiles">{render(more)}</dl>
+    </details>
+  </>;
 }
 
 export function PeriodMetricsList({ run }: { run: RunStatus }) {

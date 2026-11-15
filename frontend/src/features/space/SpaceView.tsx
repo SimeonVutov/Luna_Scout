@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { RayFan, RunStatus, SimulationOptions, Site, SunlightGrid, TimeRange } from "../../api/types";
-import { earthCanvas, sunlightCanvas } from "../globe/sunlightOverlay";
-import { EarthLegend } from "../results/EarthLegend";
-import { SunlightLegend } from "../results/SunlightLegend";
+import type { RayFan, RunStatus, SimulationOptions, Site, SiteContext, SunlightGrid, TimeRange } from "../../api/types";
+import { contextCanvas, earthCanvas, sunlightCanvas } from "../globe/sunlightOverlay";
+import { LayerLegend } from "../results/LayerLegend";
+import { LayerPicker } from "../results/LayerPicker";
+import { isContextLayer } from "../results/mapLayers";
 import { wholePercent } from "../results/format";
 import type { RigView } from "./cameraRig";
 import { defaultSpaceLayers } from "./layers";
@@ -38,7 +39,7 @@ function RayCount({ name, colour, fans, where }: { name: string; colour: string;
  * The Moon stays still and the sky moves around it, so playing the timeline never spins the
  * ground. Zooming toward the south pole loads LOLA terrain in growing detail.
  */
-export function SpaceView({ active, sites, selected, focus, run, range, timeIndex, options, sunlight, onSelect, layerState, onLayers, compact = false }: {
+export function SpaceView({ active, sites, selected, focus, run, range, timeIndex, options, sunlight, context, onSelect, layerState, onLayers, compact = false }: {
   /** Whether the view is on screen; data is only requested while it is. */
   active: boolean;
   sites: Site[];
@@ -52,6 +53,8 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
   options: SimulationOptions;
   /** The simulation's sunlight grid of the selected site at the timeline's time. */
   sunlight: SunlightGrid | null;
+  /** NASA's long-term maps over the selected site. */
+  context: SiteContext | null;
   onSelect: (id: string) => void;
   /** Layer settings owned by the parent, so two views can show the same thing. */
   layerState?: SpaceLayers;
@@ -129,10 +132,14 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
   }, [ready, sample]);
 
   useEffect(() => {
-    const painted = !selected || !sunlight ? null : resultLayer === "sun" ? sunlightCanvas(selected, sunlight)
-      : resultLayer === "earth" && hasEarth ? earthCanvas(selected, sunlight) : null;
+    let painted = null;
+    if (selected) {
+      if (resultLayer === "sunlight" && sunlight) painted = sunlightCanvas(selected, sunlight);
+      else if (resultLayer === "earth" && sunlight && hasEarth) painted = earthCanvas(selected, sunlight);
+      else if (isContextLayer(resultLayer) && context) painted = contextCanvas(selected, context, resultLayer);
+    }
     scene.current?.setResultGrid(painted && selected ? { site: selected, ...painted } : null);
-  }, [ready, selected, sunlight, resultLayer, hasEarth]);
+  }, [ready, selected, sunlight, resultLayer, hasEarth, context]);
 
   const rays = supported ? tracing.rays : null;
   useEffect(() => {
@@ -168,14 +175,12 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
       </div>
 
       <div className="space-layers">
+        <LayerPicker value={resultLayer} onChange={setResultLayer}
+          has={{ sunlight: sunlight !== null, earth: hasEarth, slope: false, context: context !== null }} />
         <div className="layer-buttons" role="group" aria-label="3D layers">
           <button className="button secondary" type="button" aria-pressed={sunRays} disabled={!supported} title={rayHint} onClick={() => setSunRays(!sunRays)}>Sun rays</button>
           <button className="button secondary" type="button" aria-pressed={earthRays} disabled={!supported} title={rayHint} onClick={() => setEarthRays(!earthRays)}>Earth rays</button>
           <button className="button secondary" type="button" aria-pressed={shading} title="Shade the relief from the Sun's direction. Shadows are not cast; the solar visibility layer shows the simulated result." onClick={() => setShading(!shading)}>Sun shading</button>
-          {sunlight && <button className="button secondary" type="button" aria-pressed={resultLayer === "sun"} onClick={() => setResultLayer(resultLayer === "sun" ? "none" : "sun")}>Solar visibility</button>}
-          {hasEarth && <button className="button secondary" type="button" aria-pressed={resultLayer === "earth"}
-            title="Which points can see Earth from mast height: geometric line of sight, not signal strength."
-            onClick={() => setResultLayer(resultLayer === "earth" ? "none" : "earth")}>Earth radio coverage</button>}
         </div>
         <label className="space-relief">
           <span>Relief ×{exaggeration.toFixed(1)}</span>
@@ -192,8 +197,7 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
           {!rays && tracing.loading && <span>Tracing rays…</span>}
           {tracing.error && <span>{tracing.error}</span>}
         </div>}
-        {resultLayer === "sun" && sunlight && <SunlightLegend />}
-        {resultLayer === "earth" && hasEarth && <EarthLegend />}
+        <LayerLegend layer={resultLayer} />
       </div>
 
       <div className="terrain-bottom">

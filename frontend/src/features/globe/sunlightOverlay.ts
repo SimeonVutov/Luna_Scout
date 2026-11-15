@@ -1,7 +1,9 @@
 import { register } from "ol/proj/proj4";
 import Static from "ol/source/ImageStatic";
 import proj4 from "proj4";
-import type { Site, SlopeGrid, SunlightGrid } from "../../api/types";
+import type { Site, SiteContext, SlopeGrid, SunlightGrid } from "../../api/types";
+import { contextColour } from "../results/contextColors";
+import type { ContextLayer } from "../results/mapLayers";
 import { slopeClass } from "../results/slopeColors";
 import { earthClass, earthColors, sunlightClass, sunlightColors } from "../results/sunlightColors";
 
@@ -30,6 +32,32 @@ function earthPaint(grid: SunlightGrid, alpha: number): Paint {
     const [red, green, blue] = earthColors[category];
     return [red, green, blue, alpha];
   };
+}
+
+const contextValues: Record<ContextLayer, (context: SiteContext) => (number | null)[]> = {
+  averageSunlight: (context) => context.average_sunlight,
+  averageEarth: (context) => context.average_earth,
+  permanentShadow: (context) => context.permanent_shadow,
+  skyOpenness: (context) => context.sky_openness,
+};
+
+function contextPaint(context: SiteContext, layer: ContextLayer, alpha: number): Paint {
+  const values = contextValues[layer](context);
+  return (index) => {
+    const value = values[index];
+    if (!context.inside_site[index] || value === null) return null;
+    return [...contextColour(layer, value), alpha] as const;
+  };
+}
+
+/** One of NASA's long-term maps as a map overlay. */
+export function contextOverlay(site: Site, context: SiteContext, layer: ContextLayer) {
+  return gridOverlay(site, context.offsets_m, contextPaint(context, layer, 165));
+}
+
+/** One of NASA's long-term maps as a picture for the 3D terrain. */
+export function contextCanvas(site: Site, context: SiteContext, layer: ContextLayer) {
+  return gridCanvas(site, context.offsets_m, contextPaint(context, layer, 255));
 }
 
 export function slopeOverlay(site: Site, grid: SlopeGrid) {

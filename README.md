@@ -23,6 +23,7 @@ LunaScout is our project for the 2026 NASA Space Apps Challenge *Lunar Landing S
 - **Lit and gentle.** The share of the site that is both in sunlight and on ground no steeper than 10°, updated with the timeline.
 - **Skyline close-up.** The Sun and Earth drawn against the real terrain horizon from the site centre, at true angular scale, with the visible share of their disks.
 - **Map layers.** Solar visibility, slope, and the footprints of NASA's 5 m terrain grids, so you can see where results are most trustworthy.
+- **NASA long-term maps.** Average sunlight and average Earth visibility over 18.6 years, permanent shadow (where ice can survive) and open sky, from NASA Goddard's LOLA illumination products. Pick them from the **Layer** menu on the map and in 3D. Compare shows each site's averages next to the numbers for the chosen dates, so you can tell a bad day from a bad place. These are averages over the whole site, never a single pixel.
 - **Earth radio coverage.** A map layer (2D, Compare and 3D) showing how much of Earth's disk each point of the site sees from mast height, and the share of the site that sees at least half of it. This is geometric line of sight through the terrain, not signal strength or a link budget.
 - **3D or 2D, for one site or two.** The app opens on the 3D view of a single site. A **3D / 2D** switch changes it to the flat south-polar map, and **Compare** shows two sites side by side in the same view, with their layer settings shared.
 - **3D view (the default).** The Moon as a globe with NASA photos, the Sun and Earth where JPL Horizons puts them, and LOLA relief that gets more detailed as you zoom toward the south pole. The Moon stays fixed and the sky moves, so playing the timeline never spins the scene. Toggle the simulation's Sun and Earth disk rays, the solar-visibility layer, vertical exaggeration, or stand at a site to see its sky. Shading shows relief only; sunlit and shadowed ground comes from the simulation.
@@ -30,7 +31,7 @@ LunaScout is our project for the 2026 NASA Space Apps Challenge *Lunar Landing S
 
 ## Quick start
 
-**Requirements:** Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 22.12+, and about 1.5 GB of disk space for NASA data.
+**Requirements:** Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 22.12+, and about 1.7 GB of disk space for NASA data.
 
 Open three terminals in the repository root.
 
@@ -64,7 +65,7 @@ Open the URL Vite prints (usually <http://localhost:5173>). The API documentatio
 
 1. Choose a reference site, or press **Add site** and click the map.
 2. Set the UTC date range and press **Run simulation**. The playhead time is computed first.
-3. Scrub the timeline to explore snapshots. Toggle **Solar visibility** and **Earth radio coverage** on the map; use the **3D / 2D** switch to change between the globe and the flat map.
+3. Scrub the timeline to explore snapshots. Choose what to draw from the **Layer** menu on the map (Solar visibility, Earth radio coverage, NASA long-term maps, Slope); use the **3D / 2D** switch to change between the globe and the flat map.
 4. Pick a second site under **Compare with** to see the two side by side.
 
 The first run at a new site builds a terrain horizon map, which takes about 40–70 s. Later runs and date changes at that site reuse it.

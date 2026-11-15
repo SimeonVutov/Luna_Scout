@@ -368,13 +368,11 @@ h1, h2, h3, h4, p { margin: 0; }
 .quality.regional, .warn-value { color: #f0c878; }
 .quality.coarse { color: #f2a08f; }
 .quality-note.coarse { color: #f2a08f; }
-.pane-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 230px); gap: 12px; align-items: start; }
+.pane-body { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
 .pane-sky { display: grid; gap: 6px; min-width: 0; }
 .pane-sky .sky-closeup { margin: 0; }
 .pane-sky .segmented.compact { justify-self: start; }
-.pane-sky .sky-closeup.compact svg { max-height: 100px; }
 .pane-sky .sky-closeup.compact figcaption small { display: none; }
-@media (max-width: 1200px) { .pane-body { grid-template-columns: minmax(0, 1fr); } }
 
 .layer-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
 .layer-buttons .button[aria-pressed="true"] { background: #273b3a; color: var(--accent); border-color: #3c5753; }
@@ -440,3 +438,37 @@ h1, h2, h3, h4, p { margin: 0; }
 .space-compact .space-layers { top: 40px; left: 14px; }
 .space-compact .terrain-controls { top: 10px; right: 10px; }
 .space-compact .terrain-bottom { left: 14px; bottom: 10px; }
+.layer-picker { display: flex; align-items: center; gap: 8px; padding: 5px 9px; color: #e7edf0; background: #161b23ec; border: 1px solid #36414b; border-radius: 6px; font-size: .75rem; }
+.layer-picker select { background: #10151a; color: #e9eeef; border: 1px solid #36414a; border-radius: 5px; padding: 4px 6px; font: inherit; max-width: 230px; }
+.sunlight-legend .ramp { display: inline-block; width: 110px; height: 10px; border-radius: 3px; }
+.sunlight-legend .ramp-label { font-size: .67rem; color: #cbd2d8; }
+.layer-help { max-width: 330px; padding: 6px 9px; color: #cbd2d8; background: #161b23d9; border: 1px solid #36414b; border-radius: 6px; font-size: .68rem; line-height: 1.45; }
+
+/* Larger, summary-first numbers in the comparison */
+.stat-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.stat-tiles > div { padding: 11px 13px; }
+.stat-tiles dt { font-size: .82rem; }
+.stat-tiles dd { margin-top: 5px; font-size: 1.05rem; }
+.stat-tiles.headline dd { font-size: 1.55rem; font-weight: 640; letter-spacing: -.02em; }
+.more-tiles { margin-top: 8px; }
+.more-tiles summary { cursor: pointer; color: var(--muted); font-size: .82rem; padding: 4px 0 8px; }
+.more-tiles .stat-tiles { margin-top: 2px; }
+.summary-card { padding: 20px 22px 22px; }
+.summary-card h3 { font-size: 1.15rem; }
+.summary-card header p { font-size: .85rem; }
+.scorecard { font-size: 1rem; }
+.scorecard th, .scorecard td { padding: 12px 10px; }
+.scorecard tbody th { color: #cbd2d8; }
+.scorecard td.best { font-size: 1.05rem; }
+.scorecard .group-row th { text-align: left; padding: 20px 10px 8px; color: var(--accent); font-size: .85rem; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; border-bottom: 1px solid #3a4651; }
+.scorecard .group-row small { margin-left: 12px; color: var(--muted); font-size: .78rem; font-weight: 450; text-transform: none; letter-spacing: 0; }
+.segmented.compact button { font-size: .85rem; }
+.measure-select { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .85rem; }
+.measure-select select { background: #10151a; color: #e9eeef; border: 1px solid #36414a; border-radius: 6px; padding: 7px 10px; font: inherit; font-size: .9rem; }
+.pane-name strong { font-size: 1.1rem; }
+.pane-name small { font-size: .8rem; }
+
+/* The stats take what they need; the sky picture keeps its own 2:1 shape and fills its box, so no empty bands */
+.pane-stats { flex: 2 1 340px; min-width: 0; }
+.pane-sky { flex: 1 1 230px; max-width: 400px; }
+.pane-sky .sky-closeup svg { width: 100%; height: auto; aspect-ratio: 2 / 1; }

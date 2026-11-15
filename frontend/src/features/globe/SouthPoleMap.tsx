@@ -11,18 +11,19 @@ import { getPointResolution } from "ol/proj";
 import VectorSource from "ol/source/Vector";
 import { Circle as CircleStyle, Fill, Stroke, Style } from "ol/style";
 import proj4 from "proj4";
-import type { Coordinate, Site, SiteSpec, SlopeGrid, SunlightGrid } from "../../api/types";
-import { SlopeLegend } from "../results/SlopeLegend";
-import { SunlightLegend } from "../results/SunlightLegend";
-import { EarthLegend } from "../results/EarthLegend";
-import { earthOverlay, slopeOverlay, sunlightOverlay } from "./sunlightOverlay";
+import type { Coordinate, Site, SiteContext, SiteSpec, SlopeGrid, SunlightGrid } from "../../api/types";
+import { LayerLegend } from "../results/LayerLegend";
+import { LayerPicker } from "../results/LayerPicker";
+import { isContextLayer } from "../results/mapLayers";
+import type { MapLayer } from "../results/mapLayers";
+import { contextOverlay, earthOverlay, slopeOverlay, sunlightOverlay } from "./sunlightOverlay";
 import { MapCompass } from "./MapCompass";
 import type { Orientation } from "./MapCompass";
 import { detailExtent, detailLayer, edge, geographic, globalExtent, globalImagery, polar, polarImagery } from "./polarImagery";
 import "ol/ol.css";
 
 type MapMode = "south" | "global";
-export type MapLayer = "sunlight" | "earth" | "slope" | "none";
+export type { MapLayer };
 
 function createView(mode: MapMode) {
   if (mode === "global") {
@@ -54,6 +55,8 @@ type Props = {
   cameraTarget: Site | null;
   sunlight: SunlightGrid | null;
   slope: SlopeGrid | null;
+  /** NASA's long-term maps over the selected site. */
+  context: SiteContext | null;
   layer: MapLayer;
   onLayerChange: (layer: MapLayer) => void;
   /** Keep the map on the south-polar view only, with no Whole Moon option. */
@@ -127,14 +130,16 @@ export function SouthPoleMap(props: Props) {
   const { sites, selectedId, draft, sunlight, slope, layer, cameraTarget } = props;
   const selectedSite = sites.find((site) => site.id === selectedId);
   const hasEarth = sunlight?.earth_visible_fraction_lower != null;
-  const overlayShown = layer === "sunlight" ? sunlight !== null : layer === "earth" ? hasEarth : layer === "slope" ? slope !== null : false;
+  const { context } = props;
+  const overlayShown = layer === "sunlight" ? sunlight !== null : layer === "earth" ? hasEarth : layer === "slope" ? slope !== null : isContextLayer(layer) ? context !== null : false;
   useEffect(() => {
     let image = null;
     if (selectedSite && layer === "sunlight" && sunlight) image = sunlightOverlay(selectedSite, sunlight);
     if (selectedSite && layer === "earth" && sunlight && hasEarth) image = earthOverlay(selectedSite, sunlight);
     if (selectedSite && layer === "slope" && slope) image = slopeOverlay(selectedSite, slope);
+    if (selectedSite && isContextLayer(layer) && context) image = contextOverlay(selectedSite, context, layer);
     overlay.setSource(image);
-  }, [overlay, selectedSite, sunlight, slope, layer, hasEarth]);
+  }, [overlay, selectedSite, sunlight, slope, layer, hasEarth, context]);
   useEffect(() => {
     source.clear();
     for (const site of [...sites, ...(draft ? [{ ...draft, id: null }] : [])]) {
@@ -181,23 +186,10 @@ export function SouthPoleMap(props: Props) {
     <div className="map-mount" ref={target} />
     <div className="viewport-label">{mode === "south" ? "South pole" : "Whole Moon"} · {scale.toLocaleString(undefined, { maximumFractionDigits: 2 })} m / screen px</div>
     <MapCompass orientation={orientation} />
-    {!props.picking && (sunlight || slope) && <div className="map-simulation-key">
-      <div className="layer-buttons" role="group" aria-label="Map layers">
-        {sunlight && <button className="button secondary" type="button" aria-pressed={layer === "sunlight"} onClick={() => props.onLayerChange(layer === "sunlight" ? "none" : "sunlight")}>
-          Solar visibility
-        </button>}
-        {hasEarth && <button className="button secondary" type="button" aria-pressed={layer === "earth"}
-          title="Which points can see Earth from mast height: geometric line of sight, not signal strength."
-          onClick={() => props.onLayerChange(layer === "earth" ? "none" : "earth")}>
-          Earth radio coverage
-        </button>}
-        {slope && <button className="button secondary" type="button" aria-pressed={layer === "slope"} onClick={() => props.onLayerChange(layer === "slope" ? "none" : "slope")}>
-          Slope
-        </button>}
-      </div>
-      {layer === "sunlight" && sunlight && <SunlightLegend />}
-      {layer === "earth" && hasEarth && <EarthLegend />}
-      {layer === "slope" && slope && <SlopeLegend />}
+    {!props.picking && (sunlight || slope || context) && <div className="map-simulation-key">
+      <LayerPicker value={layer} onChange={props.onLayerChange}
+        has={{ sunlight: sunlight !== null, earth: hasEarth, slope: slope !== null, context: context !== null }} />
+      <LayerLegend layer={layer} />
     </div>}
     {props.picking && <p className="map-instruction">Click the map to place the site center</p>}
     {tileError && <p className="map-note" role="status">Some NASA imagery tiles could not load.</p>}

@@ -6,6 +6,7 @@ import type { Coordinate, RunStatus, Site, SiteSpec, TimeRange } from "./api/typ
 import { Icon } from "./Icon";
 import { defaultOptions, isActive, useRunOutput, useRunSeries, useScience } from "./features/results/useScience";
 import { useSiteInsight } from "./features/results/useSiteInsight";
+import { useSiteContext } from "./features/results/useSiteContext";
 import { ActivityMenu } from "./features/activity/ActivityMenu";
 import { useActivity } from "./features/activity/useActivity";
 import { ResultsPanel } from "./features/results/ResultsPanel";
@@ -97,6 +98,9 @@ export function App() {
   const compareSeriesB = useRunSeries(exploring ? null : compareRuns.b);
 
   const selectedInsight = useSiteInsight(exploring ? selected : null, options);
+  const selectedContext = useSiteContext(exploring ? selected : null, options);
+  const contextA = useSiteContext(exploring ? null : chosen.a, options);
+  const contextB = useSiteContext(exploring ? null : chosen.b, options);
   const insightA = useSiteInsight(exploring ? null : chosen.a, options);
   const insightB = useSiteInsight(exploring ? null : chosen.b, options);
 
@@ -287,26 +291,26 @@ export function App() {
           submitting={submittedSites.some(science.submitting)} canStart={chosen.a !== null && chosen.b !== null && runnableSites.length > 0}
           onAssign={assign} onSwap={swap} onRun={() => void startRuns()} onOpenSettings={() => setSettingsOpen(true)} />}
         {!exploring && compareView === "summary" && <CompareSummary range={range} at={instant} panes={{
-          a: { site: chosen.a, run: compareRuns.a, series: compareSeriesA },
-          b: { site: chosen.b, run: compareRuns.b, series: compareSeriesB },
+          a: { site: chosen.a, run: compareRuns.a, series: compareSeriesA, context: contextA, insight: insightA.insight },
+          b: { site: chosen.b, run: compareRuns.b, series: compareSeriesB, context: contextB, insight: insightB.insight },
         }} />}
         {!exploring && compareView === "live" && <CompareLive at={instant} view={view} range={range} timeIndex={timeIndex} options={options} spaceLayers={spaceLayers} onSpaceLayers={setSpaceLayers} layer={mapLayer} onLayerChange={setMapLayer}
           panes={{
-            a: { site: chosen.a, run: compareRuns.a, reading: compareOutputs.a.frame?.reading ?? null, sunlight: compareOutputs.a.frame?.grid ?? null, insight: insightA.insight },
-            b: { site: chosen.b, run: compareRuns.b, reading: compareOutputs.b.frame?.reading ?? null, sunlight: compareOutputs.b.frame?.grid ?? null, insight: insightB.insight },
+            a: { site: chosen.a, run: compareRuns.a, reading: compareOutputs.a.frame?.reading ?? null, sunlight: compareOutputs.a.frame?.grid ?? null, insight: insightA.insight, context: contextA },
+            b: { site: chosen.b, run: compareRuns.b, reading: compareOutputs.b.frame?.reading ?? null, sunlight: compareOutputs.b.frame?.grid ?? null, insight: insightB.insight, context: contextB },
           }} />}
         <div className="viewport-stage" hidden={!exploring}>
           <div className="stage-view" hidden={inSpace}>
             <SouthPoleMap sites={sites} selectedId={selectedId} draft={activeDraft} picking={draft !== null}
               onPick={pick} onSelect={selectSite} cameraTarget={cameraTarget} sunlight={sunlight}
-              slope={selectedInsight.insight?.slope_grid ?? null} layer={mapLayer} onLayerChange={setMapLayer}
+              slope={selectedInsight.insight?.slope_grid ?? null} context={selectedContext} layer={mapLayer} onLayerChange={setMapLayer}
               />
           </div>
           <div className="stage-view" hidden={!inSpace}>
             <Suspense fallback={<div className="terrain-status" role="status">Opening the 3D view…</div>}>
               <SpaceView active={inSpace && exploring} sites={sites} selected={selected} focus={cameraTarget} run={selectedRun}
                 layerState={spaceLayers} onLayers={setSpaceLayers}
-                range={range} timeIndex={timeIndex} options={options} sunlight={sunlight} onSelect={selectSite} />
+                range={range} timeIndex={timeIndex} options={options} sunlight={sunlight} context={selectedContext} onSelect={selectSite} />
             </Suspense>
           </div>
         </div>

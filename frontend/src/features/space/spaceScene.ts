@@ -283,7 +283,7 @@ export function spaceScene(host: HTMLDivElement, labelLayer: HTMLDivElement, cal
       const opacity = sources.length > 1 ? 0.55 : 0.9;
       for (const fan of sources) fans.push(rayFan(fan, rayColours.earth, rayColours.earthBlocked, shared.uExaggeration.value, opacity));
     }
-    scene.add(...fans);
+    if (fans.length) scene.add(...fans);
   }
 
   let lastProblem: string | null = null;
