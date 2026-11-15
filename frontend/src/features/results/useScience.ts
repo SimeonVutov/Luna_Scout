@@ -9,6 +9,9 @@ export const defaultOptions: SimulationOptions = {
   solar_disk_samples: 37,
   integration_minutes: 15,
   mast_height_m: 2,
+  collector_height_m: 2,
+  receiver: "vertical_tracking",
+  ray_method: "horizon",
 };
 
 function requestKey(site: Site, range: TimeRange, options: SimulationOptions) {
@@ -16,6 +19,7 @@ function requestKey(site: Site, range: TimeRange, options: SimulationOptions) {
     site.latitude_deg, site.longitude_deg, site.radius_m,
     range.start_utc, range.end_utc, range.snapshot_minutes,
     options.grid_spacing_m, options.solar_disk_samples, options.integration_minutes, options.mast_height_m,
+    options.collector_height_m, options.receiver, options.ray_method,
   ]);
 }
 

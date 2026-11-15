@@ -7,6 +7,7 @@ import { ResultsPanel } from "./features/results/ResultsPanel";
 import { siteCatalog, usesApiCatalog } from "./features/sites/siteCatalog";
 import { SitePanel } from "./features/sites/SitePanel";
 import { maximumSiteRadius } from "./features/sites/referenceSites";
+import { SettingsDrawer } from "./features/settings/SettingsDrawer";
 import { Timeline } from "./features/timeline/Timeline";
 import { snapshotAt, todayRange } from "./features/timeline/time";
 
@@ -31,7 +32,7 @@ export function App() {
   const [range, setRange] = useState(todayRange);
   const [timeIndex, setTimeIndex] = useState(0);
   const [options, setOptions] = useState(defaultOptions);
-  const [comparisonId, setComparisonId] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [terrainMode, setTerrainMode] = useState(false);
   const [visitedTerrain, setVisitedTerrain] = useState<string | null>(null);
   const [showSunlight, setShowSunlight] = useState(true);
@@ -57,24 +58,19 @@ export function App() {
 
   const selected = sites.find((site) => site.id === selectedId) ?? null;
   const instant = snapshotAt(range, timeIndex);
-  const comparison = sites.find((site) => site.id === comparisonId && site.id !== selectedId) ?? null;
   const science = useScience(sites, range, options, instant.toISOString());
   const selectedRun = science.status(selected);
-  const comparedRun = science.status(comparison);
   const selectedOutput = useRunOutput(selectedRun, timeIndex);
   const series = useRunSeries(selectedRun);
-  const comparisonSeries = useRunSeries(comparedRun);
-  const comparedReading = comparisonSeries.find((point) => Date.parse(point.at_utc) === instant.valueOf()) ?? null;
   const showTerrain = terrainMode && selected !== null && !draft;
   const terrainKey = selected ? `${selected.latitude_deg}/${selected.longitude_deg}/${selected.radius_m}` : null;
   useEffect(() => {
     if (showTerrain) setVisitedTerrain(terrainKey);
   }, [showTerrain, terrainKey]);
   const sunlight = selectedOutput.frame?.grid ?? null;
-  const submittedSites = [selected, comparison].filter((site): site is Site => site !== null);
-  const supportedSelection = submittedSites.every((site) => site.latitude_deg <= -60);
+  const submittedSites = selected ? [selected] : [];
   const runnableSites = submittedSites.filter((site) => {
-    if (!supportedSelection) return false;
+    if (site.latitude_deg > -60) return false;
     const status = science.status(site);
     return !science.submitting(site) && !isActive(status) && status?.stage !== "complete";
   });
@@ -84,7 +80,6 @@ export function App() {
 
   function selectSite(id: string | null) {
     setSelectedId(id);
-    if (id === comparisonId) setComparisonId("");
   }
 
   async function startRuns() {
@@ -170,10 +165,13 @@ export function App() {
           <button className="button secondary" type="button" aria-pressed={!showTerrain} onClick={() => setTerrainMode(false)}>Map</button>
           <button className="button secondary" type="button" aria-pressed={showTerrain} disabled={!selected || selected.latitude_deg > -60 || !!draft} onClick={() => setTerrainMode(true)}>3D terrain</button>
         </div>
-        <div className="connection" role="status">
-          {catalogState === "ready" && (usesApiCatalog ? "Saved on server" : "Sites saved in this browser")}
-          {catalogState === "loading" && "Loading saved sites…"}
-          {catalogState === "error" && <button className="button quiet" type="button" onClick={() => void loadSites()}>Retry loading sites</button>}
+        <div className="topbar-end">
+          <div className="connection" role="status">
+            {catalogState === "ready" && (usesApiCatalog ? "Saved on server" : "Sites saved in this browser")}
+            {catalogState === "loading" && "Loading saved sites…"}
+            {catalogState === "error" && <button className="button quiet" type="button" onClick={() => void loadSites()}>Retry loading sites</button>}
+          </div>
+          <button className="button secondary" type="button" onClick={() => setSettingsOpen(true)}><Icon name="settings" size={16} /> Settings</button>
         </div>
       </header>
 
@@ -208,11 +206,12 @@ export function App() {
           run={selectedRun} reading={selectedOutput.frame?.reading ?? null} series={series} frameError={selectedOutput.error}
           submitting={submittedSites.some(science.submitting)} reconnecting={science.reconnecting}
           priorityError={science.priorityError}
-          options={options} onOptions={setOptions} onRun={() => void startRuns()}
-          sites={sites} comparison={comparison} compareRun={comparedRun} compareReading={comparedReading}
-          onCompare={setComparisonId} canStart={runnableSites.length > 0} />
+          options={options} onRun={() => void startRuns()} onOpenSettings={() => setSettingsOpen(true)}
+          canStart={runnableSites.length > 0} />
       </div>
       <Timeline range={range} index={timeIndex} onIndex={setTimeIndex} onRange={changeRange} ready={selectedRun?.ready_indices} />
+      {settingsOpen && <SettingsDrawer options={options} onClose={() => setSettingsOpen(false)}
+        onApply={(next) => { setOptions(next); setSettingsOpen(false); }} />}
     </main>
   );
 }

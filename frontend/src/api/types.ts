@@ -12,11 +12,17 @@ export type TimeRange = {
   snapshot_minutes: number;
 };
 
+export type Receiver = "vertical_tracking" | "terrain" | "horizontal";
+export type RayMethod = "horizon" | "direct";
+
 export type SimulationOptions = {
   grid_spacing_m: number;
   solar_disk_samples: number;
   integration_minutes: number;
   mast_height_m: number;
+  collector_height_m: number;
+  receiver: Receiver;
+  ray_method: RayMethod;
 };
 
 export type RunRequest = TimeRange & SimulationOptions & {
@@ -39,6 +45,7 @@ export type Reading = {
   sun_at_collector: BodyView | null;
   earth_at_mast: BodyView | null;
   earth_center_visibility: Visibility;
+  earth_disk_visible_fraction?: Bounds | null;
   summary: {
     sample_count: number;
     ground_sample_count: number;
@@ -59,16 +66,32 @@ export type PeriodMetrics = {
   earth_resolved_hours: number;
 };
 
+export type VisibilityWindow = { start_utc: string; end_utc: string; visibility: Visibility };
+
+export type LongestWindow = {
+  start_utc: string;
+  end_utc: string;
+  hours: number;
+  /** The window touches the start or end of the run, so the real one may be longer. */
+  truncated: boolean;
+};
+
 export type PeriodSummary = PeriodMetrics & {
   days: (PeriodMetrics & { date_utc: string })[];
-  earth_windows: { start_utc: string; end_utc: string; visibility: Visibility }[];
+  earth_windows: VisibilityWindow[];
+  sun_windows?: VisibilityWindow[] | null;
+  longest_darkness?: LongestWindow | null;
+  longest_earth_blackout?: LongestWindow | null;
 };
 
 export type RunStatus = {
   run_id: string;
   stage: "queued" | "running" | "complete" | "failed";
   revision: number;
-  plan: TimeRange & { integration_minutes: number };
+  plan: TimeRange & {
+    integration_minutes: number;
+    settings?: { receiver: Receiver | "fixed"; collector_height_m: number; mast_height_m: number };
+  };
   ready_indices: number[];
   ready_times_utc: string[];
   completed_samples: number;
