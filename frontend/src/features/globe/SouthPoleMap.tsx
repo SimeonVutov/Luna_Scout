@@ -16,7 +16,6 @@ import { SlopeLegend } from "../results/SlopeLegend";
 import { SunlightLegend } from "../results/SunlightLegend";
 import { EarthLegend } from "../results/EarthLegend";
 import { earthOverlay, slopeOverlay, sunlightOverlay } from "./sunlightOverlay";
-import { coverageFeatures } from "./terrainCoverage";
 import { MapCompass } from "./MapCompass";
 import type { Orientation } from "./MapCompass";
 import { detailExtent, detailLayer, edge, geographic, globalExtent, globalImagery, polar, polarImagery } from "./polarImagery";
@@ -59,8 +58,6 @@ type Props = {
   onLayerChange: (layer: MapLayer) => void;
   /** Keep the map on the south-polar view only, with no Whole Moon option. */
   southOnly?: boolean;
-  showCoverage: boolean;
-  onShowCoverageChange: (show: boolean) => void;
 };
 
 export function SouthPoleMap(props: Props) {
@@ -68,7 +65,6 @@ export function SouthPoleMap(props: Props) {
   const map = useRef<Map | null>(null);
   const [source] = useState(() => new VectorSource());
   const [overlay] = useState(() => new ImageLayer());
-  const [coverage] = useState(() => new VectorLayer({ source: new VectorSource({ features: coverageFeatures() }), visible: false }));
   const actions = useRef(props);
   const lastCameraTarget = useRef<Site | null>(null);
   const [mode, setMode] = useState<MapMode>("south");
@@ -88,7 +84,7 @@ export function SouthPoleMap(props: Props) {
     const layers = mode === "south" ? [base, detail] : [base];
     const current = new Map({
       target: target.current, view,
-      layers: [...layers, overlay, ...(mode === "south" ? [coverage] : []), new VectorLayer({ source })],
+      layers: [...layers, overlay, new VectorLayer({ source })],
     });
     map.current = current;
     function updateView() {
@@ -126,13 +122,12 @@ export function SouthPoleMap(props: Props) {
       current.dispose();
       map.current = null;
     };
-  }, [mode, overlay, coverage, source]);
+  }, [mode, overlay, source]);
 
-  const { sites, selectedId, draft, sunlight, slope, layer, cameraTarget, showCoverage } = props;
+  const { sites, selectedId, draft, sunlight, slope, layer, cameraTarget } = props;
   const selectedSite = sites.find((site) => site.id === selectedId);
   const hasEarth = sunlight?.earth_visible_fraction_lower != null;
   const overlayShown = layer === "sunlight" ? sunlight !== null : layer === "earth" ? hasEarth : layer === "slope" ? slope !== null : false;
-  useEffect(() => { coverage.setVisible(showCoverage); }, [coverage, showCoverage]);
   useEffect(() => {
     let image = null;
     if (selectedSite && layer === "sunlight" && sunlight) image = sunlightOverlay(selectedSite, sunlight);
@@ -186,7 +181,7 @@ export function SouthPoleMap(props: Props) {
     <div className="map-mount" ref={target} />
     <div className="viewport-label">{mode === "south" ? "South pole" : "Whole Moon"} · {scale.toLocaleString(undefined, { maximumFractionDigits: 2 })} m / screen px</div>
     <MapCompass orientation={orientation} />
-    {!props.picking && (sunlight || slope || mode === "south") && <div className="map-simulation-key">
+    {!props.picking && (sunlight || slope) && <div className="map-simulation-key">
       <div className="layer-buttons" role="group" aria-label="Map layers">
         {sunlight && <button className="button secondary" type="button" aria-pressed={layer === "sunlight"} onClick={() => props.onLayerChange(layer === "sunlight" ? "none" : "sunlight")}>
           Solar visibility
@@ -199,18 +194,10 @@ export function SouthPoleMap(props: Props) {
         {slope && <button className="button secondary" type="button" aria-pressed={layer === "slope"} onClick={() => props.onLayerChange(layer === "slope" ? "none" : "slope")}>
           Slope
         </button>}
-        {mode === "south" && <button className="button secondary" type="button" aria-pressed={showCoverage} onClick={() => props.onShowCoverageChange(!showCoverage)}>
-          Terrain data
-        </button>}
       </div>
       {layer === "sunlight" && sunlight && <SunlightLegend />}
       {layer === "earth" && hasEarth && <EarthLegend />}
       {layer === "slope" && slope && <SlopeLegend />}
-      {showCoverage && mode === "south" && <div className="sunlight-legend" aria-label="Terrain data legend">
-        <span><i style={{ background: "#e4c48c" }} />5 m grids (ten sites)</span>
-        <span><i className="ring" />80 m inside 80°S</span>
-        <span>240 m out to 60°S</span>
-      </div>}
     </div>}
     {props.picking && <p className="map-instruction">Click the map to place the site center</p>}
     {tileError && <p className="map-note" role="status">Some NASA imagery tiles could not load.</p>}

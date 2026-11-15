@@ -5,6 +5,8 @@ import { EarthLegend } from "../results/EarthLegend";
 import { SunlightLegend } from "../results/SunlightLegend";
 import { wholePercent } from "../results/format";
 import type { RigView } from "./cameraRig";
+import { defaultSpaceLayers } from "./layers";
+import type { SpaceLayers } from "./layers";
 import { rayColours, spaceScene } from "./spaceScene";
 import type { SpaceScene } from "./spaceScene";
 import { useSiteRays } from "./useSiteRays";
@@ -36,7 +38,7 @@ function RayCount({ name, colour, fans, where }: { name: string; colour: string;
  * The Moon stays still and the sky moves around it, so playing the timeline never spins the
  * ground. Zooming toward the south pole loads LOLA terrain in growing detail.
  */
-export function SpaceView({ active, sites, selected, focus, run, range, timeIndex, options, sunlight, onSelect }: {
+export function SpaceView({ active, sites, selected, focus, run, range, timeIndex, options, sunlight, onSelect, layerState, onLayers, compact = false }: {
   /** Whether the view is on screen; data is only requested while it is. */
   active: boolean;
   sites: Site[];
@@ -51,6 +53,11 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
   /** The simulation's sunlight grid of the selected site at the timeline's time. */
   sunlight: SunlightGrid | null;
   onSelect: (id: string) => void;
+  /** Layer settings owned by the parent, so two views can show the same thing. */
+  layerState?: SpaceLayers;
+  onLayers?: (layers: SpaceLayers) => void;
+  /** A smaller version for a comparison pane: no title or credits. */
+  compact?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const labels = useRef<HTMLDivElement>(null);
@@ -64,12 +71,15 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
   const [unsupported, setUnsupported] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [standing, setStanding] = useState(false);
-  const [sunRays, setSunRays] = useState(false);
-  const [earthRays, setEarthRays] = useState(false);
-  const [shading, setShading] = useState(true);
-  // Which of the simulation's results is drawn on the ground.
-  const [resultLayer, setResultLayer] = useState<"sun" | "earth" | "none">("sun");
-  const [exaggeration, setExaggeration] = useState(1);
+  const [ownLayers, setOwnLayers] = useState(defaultSpaceLayers);
+  const layers = layerState ?? ownLayers;
+  const { sunRays, earthRays, shading, resultLayer, exaggeration } = layers;
+  const update = (change: Partial<SpaceLayers>) => (onLayers ?? setOwnLayers)({ ...layers, ...change });
+  const setSunRays = (value: boolean) => update({ sunRays: value });
+  const setEarthRays = (value: boolean) => update({ earthRays: value });
+  const setShading = (value: boolean) => update({ shading: value });
+  const setResultLayer = (value: SpaceLayers["resultLayer"]) => update({ resultLayer: value });
+  const setExaggeration = (value: number) => update({ exaggeration: value });
 
   const sky = useSky(range, options.integration_minutes, timeIndex, active);
   const supported = selected !== null && selected.latitude_deg <= -60;
@@ -137,7 +147,7 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
   }
 
   const rayHint = !selected ? "Select a site to see its rays" : !supported ? "Rays are available for sites south of 60°S" : undefined;
-  return <section className="viewport terrain-viewport space-viewport" aria-label="3D view of the Moon, the Sun and Earth">
+  return <section className={compact ? "viewport terrain-viewport space-viewport space-compact" : "viewport terrain-viewport space-viewport"} aria-label="3D view of the Moon, the Sun and Earth">
     <div className="terrain-canvas" ref={host} />
     <div className="space-labels" ref={labels} />
     <div className="terrain-title">

@@ -71,14 +71,14 @@ export function ComparePicker(props: PickerProps) {
 
     <div className="reference-sites">
       <h3>Assign from your sites</h3>
-      {sites.length === 0 && <p className="sidebar-note">Add sites in Explore first.</p>}
+      {sites.length === 0 && <p className="sidebar-note">Add sites in Single site mode first.</p>}
       {sites.map((site) => <div key={site.id} className="assign-row">
         <span className="assign-name">{site.name}</span>
         {slots.map((slot) => <button key={slot} type="button" className="assign-button" aria-pressed={chosen[slot]?.id === site.id}
           style={chosen[slot]?.id === site.id ? { background: slotColor[slot], borderColor: slotColor[slot] } : undefined}
           aria-label={`Use ${site.name} as site ${slotLabel[slot]}`} onClick={() => props.onAssign(slot, site.id)}>{slotLabel[slot]}</button>)}
       </div>)}
-      <p className="sidebar-note">Add or edit sites in Explore.</p>
+      <p className="sidebar-note">Add or edit sites in Single site mode.</p>
     </div>
   </aside>;
 }

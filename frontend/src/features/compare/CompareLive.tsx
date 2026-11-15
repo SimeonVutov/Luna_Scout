@@ -1,12 +1,15 @@
-import { useState } from "react";
-import type { Reading, RunStatus, Site, SiteInsight, SunlightGrid } from "../../api/types";
+import { lazy, Suspense, useState } from "react";
+import type { Reading, RunStatus, SimulationOptions, Site, SiteInsight, SunlightGrid, TimeRange } from "../../api/types";
 import { Icon } from "../../Icon";
 import { SouthPoleMap } from "../globe/SouthPoleMap";
 import type { MapLayer } from "../globe/SouthPoleMap";
 import { SkyCloseUp } from "../results/SkyCloseUp";
 import { StatTiles } from "../results/SiteMetrics";
 import { coordinatesLabel } from "../sites/referenceSites";
+import type { SpaceLayers } from "../space/layers";
 import { slotColor, slotLabel, slots } from "./slots";
+
+const SpaceView = lazy(() => import("../space/SpaceView").then((module) => ({ default: module.SpaceView })));
 import type { Slot } from "./slots";
 
 type PaneData = {
@@ -22,31 +25,40 @@ type LiveProps = {
   at: Date;
   layer: MapLayer;
   onLayerChange: (layer: MapLayer) => void;
-  showCoverage: boolean;
-  onShowCoverageChange: (show: boolean) => void;
+  view: "3d" | "2d";
+  range: TimeRange;
+  timeIndex: number;
+  options: SimulationOptions;
+  /** 3D layer settings shared by both panes. */
+  spaceLayers: SpaceLayers;
+  onSpaceLayers: (layers: SpaceLayers) => void;
 };
 
 type Body = "Sun" | "Earth";
 
 /** Two independent 2D maps, one per site, driven by the shared timeline. */
-export function CompareLive({ panes, at, layer, onLayerChange, showCoverage, onShowCoverageChange }: LiveProps) {
+export function CompareLive({ panes, at, layer, onLayerChange, view, range, timeIndex, options, spaceLayers, onSpaceLayers }: LiveProps) {
   // Map layers and the skyline body are shared, so both sites always show the same thing.
   const [body, setBody] = useState<Body>("Sun");
   return <div className="compare-live">
     {slots.map((slot) => <Pane key={`${slot}-${panes[slot].site?.id ?? "none"}`} slot={slot} data={panes[slot]} at={at}
-      layer={layer} onLayerChange={onLayerChange} showCoverage={showCoverage} onShowCoverageChange={onShowCoverageChange}
-      body={body} onBodyChange={setBody} />)}
+      layer={layer} onLayerChange={onLayerChange} view={view} range={range} timeIndex={timeIndex} options={options}
+      spaceLayers={spaceLayers} onSpaceLayers={onSpaceLayers} body={body} onBodyChange={setBody} />)}
   </div>;
 }
 
-function Pane({ slot, data, at, layer, onLayerChange, showCoverage, onShowCoverageChange, body, onBodyChange }: {
+function Pane({ slot, data, at, layer, onLayerChange, view, range, timeIndex, options, spaceLayers, onSpaceLayers, body, onBodyChange }: {
   slot: Slot;
   data: PaneData;
   at: Date;
   layer: MapLayer;
   onLayerChange: (layer: MapLayer) => void;
-  showCoverage: boolean;
-  onShowCoverageChange: (show: boolean) => void;
+  view: "3d" | "2d";
+  range: TimeRange;
+  timeIndex: number;
+  options: SimulationOptions;
+  spaceLayers: SpaceLayers;
+  onSpaceLayers: (layers: SpaceLayers) => void;
   body: Body;
   onBodyChange: (body: Body) => void;
 }) {
@@ -83,10 +95,13 @@ function Pane({ slot, data, at, layer, onLayerChange, showCoverage, onShowCovera
       </div>
     </header>
     <div className="pane-map">
-      <SouthPoleMap southOnly sites={[site]} selectedId={site.id} draft={null} picking={false}
+      {view === "3d" ? <Suspense fallback={<p className="terrain-status" role="status">Opening the 3D view…</p>}>
+        <SpaceView compact active sites={[site]} selected={site} focus={cameraTarget} run={data.run}
+          range={range} timeIndex={timeIndex} options={options} sunlight={data.sunlight}
+          layerState={spaceLayers} onLayers={onSpaceLayers} onSelect={() => undefined} />
+      </Suspense> : <SouthPoleMap southOnly sites={[site]} selectedId={site.id} draft={null} picking={false}
         onPick={() => undefined} onSelect={() => undefined} cameraTarget={cameraTarget}
-        sunlight={data.sunlight} slope={data.insight?.slope_grid ?? null} layer={layer} onLayerChange={onLayerChange}
-        showCoverage={showCoverage} onShowCoverageChange={onShowCoverageChange} />
+        sunlight={data.sunlight} slope={data.insight?.slope_grid ?? null} layer={layer} onLayerChange={onLayerChange} />}
     </div>
   </section>;
 }

@@ -14,6 +14,7 @@ import { SitePanel } from "./features/sites/SitePanel";
 import { maximumSiteRadius, referenceSites } from "./features/sites/referenceSites";
 import { SettingsDrawer } from "./features/settings/SettingsDrawer";
 import { Timeline } from "./features/timeline/Timeline";
+import { defaultSpaceLayers } from "./features/space/layers";
 import type { ReadyTrack } from "./features/timeline/Timeline";
 import { ComparePicker } from "./features/compare/ComparePicker";
 import { CompareLive } from "./features/compare/CompareLive";
@@ -35,12 +36,16 @@ function errorText(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
 
-/** Explore and 3D show one site with its results; Compare shows two side by side. */
-type Mode = "explore" | "space" | "compare";
+/** One site with its results, or two sites side by side. */
+type Mode = "single" | "compare";
+/** The Moon in 3D (the default) or the flat south-polar map. */
+type View = "3d" | "2d";
 type CompareView = "live" | "summary";
 
 export function App() {
-  const [mode, setMode] = useState<Mode>("space");
+  const [mode, setMode] = useState<Mode>("single");
+  const [view, setView] = useState<View>("3d");
+  const [spaceLayers, setSpaceLayers] = useState(defaultSpaceLayers);
   const [compareView, setCompareView] = useState<CompareView>("live");
   const [compareIds, setCompareIds] = useState<Record<Slot, string | null>>({ a: null, b: null });
   const [sites, setSites] = useState<Site[]>([]);
@@ -51,10 +56,7 @@ export function App() {
   const [timeIndex, setTimeIndex] = useState(0);
   const [options, setOptions] = useState(defaultOptions);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // The 3D view is created on first use and then kept, so its loaded terrain survives mode changes.
-  const [spaceOpened, setSpaceOpened] = useState(true);
   const [mapLayer, setMapLayer] = useState<MapLayer>("sunlight");
-  const [showCoverage, setShowCoverage] = useState(false);
   const [busy, setBusy] = useState(false);
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
@@ -81,8 +83,8 @@ export function App() {
   const activity = useActivity();
   const siteRuns = Object.fromEntries(sites.map((site) => [site.id, science.status(site)]));
   const phases: Record<string, string | null> = activity.list?.worker.run_id ? { [activity.list.worker.run_id]: activity.list.worker.activity } : {};
-  const exploring = mode !== "compare";
-  const inSpace = mode === "space";
+  const exploring = mode === "single";
+  const inSpace = view === "3d";
   const chosen: Record<Slot, Site | null> = {
     a: sites.find((site) => site.id === compareIds.a) ?? null,
     b: sites.find((site) => site.id === compareIds.b) ?? null,
@@ -123,9 +125,6 @@ export function App() {
       const second = compareIds.b ?? sites.find((site) => site.id !== first)?.id ?? null;
       setCompareIds({ a: first, b: second === first ? null : second });
     }
-    // A new site is placed on the 2D map, so a draft does not follow into the other modes.
-    if (next !== "explore") setDraft(null);
-    if (next === "space") setSpaceOpened(true);
     setMode(next);
   }
 
@@ -245,10 +244,13 @@ export function App() {
         </div>
         <div className="topbar-center">
           <div className="view-switch mode-switch" role="group" aria-label="Mode">
-            <button className="button secondary" type="button" aria-pressed={mode === "explore"} onClick={() => chooseMode("explore")}>Explore</button>
-            <button className="button secondary" type="button" aria-pressed={inSpace} title="The Moon, the Sun and Earth in 3D" onClick={() => chooseMode("space")}>3D view</button>
+            <button className="button secondary" type="button" aria-pressed={exploring} onClick={() => chooseMode("single")}>Single site</button>
             <button className="button secondary" type="button" aria-pressed={!exploring} disabled={sites.length < 2} title={sites.length < 2 ? "Save two sites to compare them" : undefined} onClick={() => chooseMode("compare")}>Compare</button>
           </div>
+          {(exploring || compareView === "live") && <div className="view-switch" role="group" aria-label="Map type">
+            <button className="button secondary" type="button" aria-pressed={view === "3d"} title="The Moon, the Sun and Earth in 3D" onClick={() => setView("3d")}>3D</button>
+            <button className="button secondary" type="button" aria-pressed={view === "2d"} title="The flat map of the south pole" onClick={() => setView("2d")}>2D</button>
+          </div>}
           {!exploring && <div className="view-switch" role="group" aria-label="Comparison view">
             <button className="button secondary" type="button" aria-pressed={compareView === "live"} onClick={() => setCompareView("live")}>Live maps</button>
             <button className="button secondary" type="button" aria-pressed={compareView === "summary"} onClick={() => setCompareView("summary")}>Whole period</button>
@@ -274,7 +276,9 @@ export function App() {
           sites={sites} selectedId={selectedId} draft={draft} busy={busy || catalogState !== "ready"}
           runs={siteRuns} phases={phases} workerRunning={activity.list ? activity.list.worker.running : null}
           onAdd={() => {
-            setMode("explore");
+            // A new site is placed by clicking the flat map.
+            setMode("single");
+            setView("2d");
             setDraft({ ...emptyDraft, name: `Site ${sites.length + 1}` });
           }}
           onDraft={setDraft} onSave={(site) => void save(site)} onSelect={selectSite}
@@ -286,7 +290,7 @@ export function App() {
           a: { site: chosen.a, run: compareRuns.a, series: compareSeriesA },
           b: { site: chosen.b, run: compareRuns.b, series: compareSeriesB },
         }} />}
-        {!exploring && compareView === "live" && <CompareLive at={instant} layer={mapLayer} onLayerChange={setMapLayer} showCoverage={showCoverage} onShowCoverageChange={setShowCoverage}
+        {!exploring && compareView === "live" && <CompareLive at={instant} view={view} range={range} timeIndex={timeIndex} options={options} spaceLayers={spaceLayers} onSpaceLayers={setSpaceLayers} layer={mapLayer} onLayerChange={setMapLayer}
           panes={{
             a: { site: chosen.a, run: compareRuns.a, reading: compareOutputs.a.frame?.reading ?? null, sunlight: compareOutputs.a.frame?.grid ?? null, insight: insightA.insight },
             b: { site: chosen.b, run: compareRuns.b, reading: compareOutputs.b.frame?.reading ?? null, sunlight: compareOutputs.b.frame?.grid ?? null, insight: insightB.insight },
@@ -296,14 +300,15 @@ export function App() {
             <SouthPoleMap sites={sites} selectedId={selectedId} draft={activeDraft} picking={draft !== null}
               onPick={pick} onSelect={selectSite} cameraTarget={cameraTarget} sunlight={sunlight}
               slope={selectedInsight.insight?.slope_grid ?? null} layer={mapLayer} onLayerChange={setMapLayer}
-              showCoverage={showCoverage} onShowCoverageChange={setShowCoverage} />
+              />
           </div>
-          {spaceOpened && <div className="stage-view" hidden={!inSpace}>
+          <div className="stage-view" hidden={!inSpace}>
             <Suspense fallback={<div className="terrain-status" role="status">Opening the 3D view…</div>}>
-              <SpaceView active={inSpace} sites={sites} selected={selected} focus={cameraTarget} run={selectedRun}
+              <SpaceView active={inSpace && exploring} sites={sites} selected={selected} focus={cameraTarget} run={selectedRun}
+                layerState={spaceLayers} onLayers={setSpaceLayers}
                 range={range} timeIndex={timeIndex} options={options} sunlight={sunlight} onSelect={selectSite} />
             </Suspense>
-          </div>}
+          </div>
         </div>
         {exploring && <ResultsPanel site={selected} at={instant} range={range} index={timeIndex}
           run={selectedRun} reading={selectedOutput.frame?.reading ?? null} series={series} frameError={selectedOutput.error}
