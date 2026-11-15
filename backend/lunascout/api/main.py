@@ -3,11 +3,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.gzip import GZipMiddleware
 
 from ..jobs.scheduler import RunQueue
 from . import site_store
 from .models import Site, SiteSpec
 from .science import science_router
+from .space import space_router
 
 
 def create_app(data_dir: Path | None = None) -> FastAPI:
@@ -23,7 +25,10 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         yield
 
     app = FastAPI(title="LunaScout API", version="0.1.0", lifespan=lifespan)
+    # Snapshots and ray sets are large JSON arrays that compress to a fraction of their size.
+    app.add_middleware(GZipMiddleware, minimum_size=2000)
     app.include_router(science_router(catalog_path, queue))
+    app.include_router(space_router(catalog_path, queue))
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
