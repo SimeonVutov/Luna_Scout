@@ -79,7 +79,6 @@ export function ComparePicker(props: PickerProps) {
           style={chosen[slot]?.id === site.id ? { background: slotColor[slot], borderColor: slotColor[slot] } : undefined}
           aria-label={`Use ${site.name} as site ${slotLabel[slot]}`} onClick={() => props.onAssign(slot, site.id)}>{slotLabel[slot]}</button>)}
       </div>)}
-      <p className="sidebar-note">Add or edit sites in Single site mode.</p>
     </div>
   </aside>;
 }

@@ -171,12 +171,6 @@
   font-weight: 600;
 }
 
-.reference-group h3 small {
-  color: var(--muted);
-  font-weight: 450;
-  font-size: .64rem;
-}
-
 .reference-button {
   display: flex;
   justify-content: space-between;

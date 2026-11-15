@@ -139,7 +139,7 @@ export function CompareSummary({ panes, range, at }: { panes: Record<Slot, Summa
     <MeasureChart title="Earth over time" measures={earthMeasures} panes={panes} start={start} end={end} at={at} gapMs={range.snapshot_minutes * 90_000} />
 
     <section className="summary-card">
-      <header><h3>Sun and Earth at the site centre</h3><p>Exact windows, available when each run completes</p></header>
+      <header><h3>Sun and Earth at the site centre</h3></header>
       <WindowStrips rows={stripRows} start={start} end={end} playhead={at.valueOf()} />
       <ul className="chart-key states">
         <li><i className="swatch clear" />Visible</li><li><i className="swatch blocked" />Hidden or blocked</li><li><i className="swatch unknown" />Unresolved</li>

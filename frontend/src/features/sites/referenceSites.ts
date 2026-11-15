@@ -2,7 +2,7 @@ import type { SiteSpec } from "../../api/types";
 
 export const maximumSiteRadius = 1_000_000;
 
-type Group = { title: string; source: string; sites: SiteSpec[] };
+type Group = { title: string; sites: SiteSpec[] };
 
 const site = (name: string, latitude_deg: number, longitude_deg: number): SiteSpec => ({ name, latitude_deg, longitude_deg, radius_m: 500 });
 
@@ -11,7 +11,6 @@ const site = (name: string, latitude_deg: number, longitude_deg: number): SiteSp
 export const referenceGroups: Group[] = [
   {
     title: "Artemis III candidate regions",
-    source: "NASA, October 2024",
     sites: [
       site("Malapert Massif", -85.9948, -0.2358),
       site("Haworth", -86.7639, -22.777),
@@ -22,7 +21,6 @@ export const referenceGroups: Group[] = [
   },
   {
     title: "Other NASA candidate sites",
-    source: "Lunar Surface Data Book",
     sites: [
       site("Shackleton Rim", -89.7668, -171.87),
       site("Connecting Ridge", -89.4632, -137.49),
@@ -37,7 +35,6 @@ export const referenceGroups: Group[] = [
   },
   {
     title: "Missions",
-    source: "NASA LROC",
     sites: [site("IM-2 Athena target (Mons Mouton)", -84.78, 29.13)],
   },
 ];

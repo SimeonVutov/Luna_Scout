@@ -164,7 +164,7 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
     <div className="space-canvas" ref={host} />
     <div className="space-labels" ref={labels} />
     <div className="space-title">
-      <h2>{standing && selected ? selected.name : "Moon, Sun and Earth"}</h2>
+      {standing && selected && <h2>{selected.name}</h2>}
       <p ref={readout} />
     </div>
 

@@ -74,7 +74,6 @@ export function ResultsPanel(props: PanelProps) {
 
       <section className="result-section">
         <h4>At the skyline</h4>
-        <p className="result-note">The Sun and Earth against the real terrain horizon from the site centre.</p>
         <SkyCloseUp label="Sun" view={reading?.sun_at_collector} skyline={props.insight?.collector_skyline_deg} step={props.insight?.skyline_azimuth_step_deg ?? 0.1} />
         <SkyCloseUp label="Earth" view={reading?.earth_at_mast} skyline={props.insight?.mast_skyline_deg} step={props.insight?.skyline_azimuth_step_deg ?? 0.1} />
       </section>

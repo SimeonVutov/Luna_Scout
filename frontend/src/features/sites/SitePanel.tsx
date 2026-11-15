@@ -73,7 +73,6 @@ export function SitePanel({ sites, selectedId, draft, busy, runs, phases, worker
 
       {draft && <SiteForm site={draft} onChange={onDraft} onSave={onSave} onCancel={() => onDraft(null)} busy={busy} />}
 
-      {sites.length === 0 && !draft && <p className="sidebar-note">Pick a point on the Moon or start with a reference site.</p>}
 
       <div className="saved-sites">
         {sites.map((site) => {
@@ -120,7 +119,7 @@ export function SitePanel({ sites, selectedId, draft, busy, runs, phases, worker
       {!draft && <details className="reference-sites" open>
         <summary>Reference sites</summary>
         {referenceGroups.map((group) => <div key={group.title} className="reference-group">
-          <h3>{group.title}<small>{group.source}</small></h3>
+          <h3>{group.title}</h3>
           {group.sites.map((site) => {
             const existing = sites.find((saved) => saved.latitude_deg === site.latitude_deg && saved.longitude_deg === site.longitude_deg);
             return <button key={site.name} className="reference-button" type="button" disabled={busy} onClick={() => {

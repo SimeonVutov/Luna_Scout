@@ -34,18 +34,14 @@ export const layerLabel: Record<MapLayer, string> = {
   bestBoth: "Best spots for both",
 };
 
-/** One sentence on what each layer means, shown under the picker. */
+/** Notes shown under the picker, only where a layer rests on an assumption or a standard. */
 export const layerHelp: Partial<Record<MapLayer, string>> = {
-  sunlight: "How much of the Sun each point sees at the time on the timeline.",
-  earth: "How much of Earth each point sees from mast height at the timeline's time. Line of sight only, not signal strength.",
-  slope: "Steepness of the ground. Gentle ground is easier to land on.",
-  averageSunlight: "Share of time each point is lit, averaged over 18.6 years (NASA LOLA).",
+  earth: "Line of sight from mast height at the timeline's time. Not signal strength.",
+  averageSunlight: "Share of time lit, averaged over 18.6 years (NASA LOLA).",
   averageEarth: "Share of time Earth is in view, averaged over 18.6 years (NASA LOLA).",
-  permanentShadow: "Ground that never sees the Sun. Cold enough to hold ice (NASA LOLA).",
-  skyOpenness: "How much of the sky the terrain leaves open. Low means deep in a pit (NASA LOLA).",
-  bestSun: "Points lit for most of the selected dates.",
-  bestEarth: "Points with Earth in view for a good share of the selected dates.",
-  bestBoth: "Points that are good for Sun and for Earth contact at once.",
+  bestSun: "Good spots are lit for most of the selected dates.",
+  bestEarth: "Good spots have Earth in view for a fair share of the selected dates.",
+  bestBoth: "Good for Sun and for Earth contact at once.",
 };
 
 /** Why a layer cannot be chosen right now, or nothing when it can. */
