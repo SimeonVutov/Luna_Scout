@@ -1,20 +1,22 @@
-import type { Site, SiteSpec } from "./types";
+import type { FramePayload, Reading, RunRequest, RunStatus, Site, SiteSpec, TerrainPreview } from "./types";
 
-async function send<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+async function send<T>(path: string, method = "GET", body?: unknown, signal?: AbortSignal): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`/api${path}`, {
       method,
+      signal,
       headers: body === undefined ? undefined : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw error;
     throw new Error("Could not reach the LunaScout API. Check that the backend is running.");
   }
   if (response.status === 204) return undefined as T;
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    const detail = typeof payload?.detail === "string" ? payload.detail : null;
+    const detail = typeof payload?.detail === "string" ? payload.detail : payload?.detail?.[0]?.msg;
     throw new Error(detail ?? "The request could not be completed. Check the API and try again.");
   }
   if (payload === null) throw new Error("The API returned an empty or invalid response.");
@@ -32,4 +34,34 @@ export function updateSite(id: string, site: SiteSpec) {
 }
 export function removeSite(id: string) {
   return send<void>(`/sites/${id}`, "DELETE");
+}
+
+export function submitRun(request: RunRequest) {
+  return send<RunStatus>("/runs", "POST", request);
+}
+
+export function runStatus(id: string, signal?: AbortSignal) {
+  return send<RunStatus>(`/runs/${id}`, "GET", undefined, signal);
+}
+
+export function prioritizeRuns(ids: string[], at: string, signal: AbortSignal) {
+  return send<void>("/runs/priority", "PUT", { run_ids: ids, at_utc: at }, signal);
+}
+
+export function runEvents(ids: string[]) {
+  const query = new URLSearchParams();
+  ids.forEach((id) => query.append("run_id", id));
+  return new EventSource(`/api/runs/events?${query}`);
+}
+
+export function runSeries(id: string, signal: AbortSignal) {
+  return send<Reading[]>(`/runs/${id}/series`, "GET", undefined, signal);
+}
+
+export function runSnapshot(id: string, index: number, signal: AbortSignal) {
+  return send<FramePayload>(`/runs/${id}/snapshots/${index}`, "GET", undefined, signal);
+}
+
+export function terrainPreview(site: SiteSpec, scale: "site" | "region", signal: AbortSignal) {
+  return send<TerrainPreview>(`/terrain/preview?scale=${scale}`, "POST", site, signal);
 }
