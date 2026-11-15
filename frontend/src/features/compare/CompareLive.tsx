@@ -22,26 +22,36 @@ type LiveProps = {
   at: Date;
   layer: MapLayer;
   onLayerChange: (layer: MapLayer) => void;
+  showCoverage: boolean;
+  onShowCoverageChange: (show: boolean) => void;
 };
 
+type Body = "Sun" | "Earth";
+
 /** Two independent 2D maps, one per site, driven by the shared timeline. */
-export function CompareLive({ panes, at, layer, onLayerChange }: LiveProps) {
+export function CompareLive({ panes, at, layer, onLayerChange, showCoverage, onShowCoverageChange }: LiveProps) {
+  // Map layers and the skyline body are shared, so both sites always show the same thing.
+  const [body, setBody] = useState<Body>("Sun");
   return <div className="compare-live">
     {slots.map((slot) => <Pane key={`${slot}-${panes[slot].site?.id ?? "none"}`} slot={slot} data={panes[slot]} at={at}
-      layer={layer} onLayerChange={onLayerChange} />)}
+      layer={layer} onLayerChange={onLayerChange} showCoverage={showCoverage} onShowCoverageChange={onShowCoverageChange}
+      body={body} onBodyChange={setBody} />)}
   </div>;
 }
 
-function Pane({ slot, data, at, layer, onLayerChange }: {
+function Pane({ slot, data, at, layer, onLayerChange, showCoverage, onShowCoverageChange, body, onBodyChange }: {
   slot: Slot;
   data: PaneData;
   at: Date;
   layer: MapLayer;
   onLayerChange: (layer: MapLayer) => void;
+  showCoverage: boolean;
+  onShowCoverageChange: (show: boolean) => void;
+  body: Body;
+  onBodyChange: (body: Body) => void;
 }) {
   const { site } = data;
   const [cameraTarget, setCameraTarget] = useState<Site | null>(site ? { ...site } : null);
-  const [body, setBody] = useState<"Sun" | "Earth">("Sun");
 
   if (!site) {
     return <section className="compare-pane empty">
@@ -64,7 +74,7 @@ function Pane({ slot, data, at, layer, onLayerChange }: {
         <div className="pane-sky">
           <div className="segmented compact" role="radiogroup" aria-label="Body at the skyline">
             {(["Sun", "Earth"] as const).map((name) => <button key={name} type="button" role="radio" aria-checked={body === name}
-              className={body === name ? "selected" : ""} onClick={() => setBody(name)}>{name}</button>)}
+              className={body === name ? "selected" : ""} onClick={() => onBodyChange(name)}>{name}</button>)}
           </div>
           <SkyCloseUp compact label={body} step={data.insight?.skyline_azimuth_step_deg ?? 0.1}
             view={body === "Sun" ? data.reading?.sun_at_collector : data.reading?.earth_at_mast}
@@ -75,7 +85,8 @@ function Pane({ slot, data, at, layer, onLayerChange }: {
     <div className="pane-map">
       <SouthPoleMap southOnly sites={[site]} selectedId={site.id} draft={null} picking={false}
         onPick={() => undefined} onSelect={() => undefined} cameraTarget={cameraTarget}
-        sunlight={data.sunlight} slope={data.insight?.slope_grid ?? null} layer={layer} onLayerChange={onLayerChange} />
+        sunlight={data.sunlight} slope={data.insight?.slope_grid ?? null} layer={layer} onLayerChange={onLayerChange}
+        showCoverage={showCoverage} onShowCoverageChange={onShowCoverageChange} />
     </div>
   </section>;
 }

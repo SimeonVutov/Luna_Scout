@@ -51,6 +51,7 @@ export function App() {
   const [visitedTerrain, setVisitedTerrain] = useState<string | null>(null);
   const [mapLayer, setMapLayer] = useState<MapLayer>("sunlight");
   const showSunlight = mapLayer === "sunlight";
+  const [showCoverage, setShowCoverage] = useState(false);
   const [busy, setBusy] = useState(false);
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
@@ -263,7 +264,7 @@ export function App() {
           a: { site: chosen.a, run: compareRuns.a, series: compareSeriesA },
           b: { site: chosen.b, run: compareRuns.b, series: compareSeriesB },
         }} />}
-        {!exploring && compareView === "live" && <CompareLive at={instant} layer={mapLayer} onLayerChange={setMapLayer}
+        {!exploring && compareView === "live" && <CompareLive at={instant} layer={mapLayer} onLayerChange={setMapLayer} showCoverage={showCoverage} onShowCoverageChange={setShowCoverage}
           panes={{
             a: { site: chosen.a, run: compareRuns.a, reading: compareOutputs.a.frame?.reading ?? null, sunlight: compareOutputs.a.frame?.grid ?? null, insight: insightA.insight },
             b: { site: chosen.b, run: compareRuns.b, reading: compareOutputs.b.frame?.reading ?? null, sunlight: compareOutputs.b.frame?.grid ?? null, insight: insightB.insight },
@@ -272,7 +273,8 @@ export function App() {
           <div className="stage-view" hidden={showTerrain}>
             <SouthPoleMap sites={sites} selectedId={selectedId} draft={activeDraft} picking={draft !== null}
               onPick={pick} onSelect={selectSite} cameraTarget={cameraTarget} sunlight={sunlight}
-              slope={selectedInsight.insight?.slope_grid ?? null} layer={mapLayer} onLayerChange={setMapLayer} />
+              slope={selectedInsight.insight?.slope_grid ?? null} layer={mapLayer} onLayerChange={setMapLayer}
+              showCoverage={showCoverage} onShowCoverageChange={setShowCoverage} />
           </div>
           {selected && (showTerrain || terrainKey === visitedTerrain) && <div className="stage-view" hidden={!showTerrain}>
             <Suspense fallback={<div className="terrain-status" role="status">Opening 3D terrain…</div>}>

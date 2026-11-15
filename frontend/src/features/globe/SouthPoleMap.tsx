@@ -58,6 +58,8 @@ type Props = {
   onLayerChange: (layer: MapLayer) => void;
   /** Keep the map on the south-polar view only, with no Whole Moon option. */
   southOnly?: boolean;
+  showCoverage: boolean;
+  onShowCoverageChange: (show: boolean) => void;
 };
 
 export function SouthPoleMap(props: Props) {
@@ -66,7 +68,6 @@ export function SouthPoleMap(props: Props) {
   const [source] = useState(() => new VectorSource());
   const [overlay] = useState(() => new ImageLayer());
   const [coverage] = useState(() => new VectorLayer({ source: new VectorSource({ features: coverageFeatures() }), visible: false }));
-  const [showCoverage, setShowCoverage] = useState(false);
   const actions = useRef(props);
   const lastCameraTarget = useRef<Site | null>(null);
   const [mode, setMode] = useState<MapMode>("south");
@@ -126,7 +127,7 @@ export function SouthPoleMap(props: Props) {
     };
   }, [mode, overlay, coverage, source]);
 
-  const { sites, selectedId, draft, sunlight, slope, layer, cameraTarget } = props;
+  const { sites, selectedId, draft, sunlight, slope, layer, cameraTarget, showCoverage } = props;
   const selectedSite = sites.find((site) => site.id === selectedId);
   const overlayShown = layer === "sunlight" ? sunlight !== null : layer === "slope" ? slope !== null : false;
   useEffect(() => { coverage.setVisible(showCoverage); }, [coverage, showCoverage]);
@@ -190,7 +191,7 @@ export function SouthPoleMap(props: Props) {
         {slope && <button className="button secondary" type="button" aria-pressed={layer === "slope"} onClick={() => props.onLayerChange(layer === "slope" ? "none" : "slope")}>
           Slope
         </button>}
-        {mode === "south" && <button className="button secondary" type="button" aria-pressed={showCoverage} onClick={() => setShowCoverage(!showCoverage)}>
+        {mode === "south" && <button className="button secondary" type="button" aria-pressed={showCoverage} onClick={() => props.onShowCoverageChange(!showCoverage)}>
           Terrain data
         </button>}
       </div>
