@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from ..jobs.metrics import Reading
 from ..jobs.plan import MissingScienceInputs, create_plan
-from ..jobs.scheduler import Provenance, RunQueue, RunStatus
+from ..jobs.scheduler import Provenance, RunList, RunQueue, RunStatus
 from ..simulation.engine import SimulationSettings
 from ..simulation.frames import SiteFootprint
 from ..terrain.model import TerrainError
@@ -83,6 +83,11 @@ def science_router(data_dir: Path, queue: RunQueue) -> APIRouter:
             raise HTTPException(503, str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+
+    @router.get("/runs")
+    def list_runs(limit: Annotated[int, Query(ge=1, le=100)] = 30) -> RunList:
+        """Recent runs and the worker's state, so the dashboard can show what is happening."""
+        return RunList(worker=queue.worker_status(), runs=queue.list_runs(limit))
 
     @router.put("/runs/priority", status_code=204)
     def prioritize(spec: RunPriority) -> None:

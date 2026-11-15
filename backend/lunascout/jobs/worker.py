@@ -3,10 +3,12 @@
 import argparse
 import logging
 import os
+import sqlite3
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Event, Thread
 from time import perf_counter, sleep
 
 import numpy as np
@@ -59,12 +61,14 @@ class Worker:
             raise ValueError("The science inputs changed. Submit a run with the new inputs.")
 
         source_revision = tuple(sources.items())
+        self.queue.set_activity(batch.run_id, "Preparing terrain")
         prepared = self._prepared(plan.site, plan.settings, source_revision)
         if not batch.indices:
             self._complete(batch.run_id, plan, prepared)
             return
 
-        horizons = self._horizons(plan, prepared, source_revision, batch.playhead_only)
+        horizons = self._horizons(batch.run_id, plan, prepared, source_revision, batch.playhead_only)
+        self.queue.set_activity(batch.run_id, "Computing snapshots")
         for index in batch.indices:
             start = (index // BATCH_SIZE) * BATCH_SIZE
             stop = min(plan.interval_count + 1, start + BATCH_SIZE)
@@ -97,6 +101,7 @@ class Worker:
     def _complete(self, run_id: str, plan: RunPlan, prepared: PreparedSite) -> None:
         """Find exact centre windows over the run, integrate, and publish the summary."""
         started = perf_counter()
+        self.queue.set_activity(run_id, "Finding sunrise and sunset times")
         windows = centre_windows(prepared, self._run_samples(plan))
         readings = self.queue.readings(run_id)
         self.queue.complete(run_id, integrate(readings, windows))
@@ -104,6 +109,7 @@ class Worker:
 
     def _horizons(
         self,
+        run_id: str,
         plan: RunPlan,
         prepared: PreparedSite,
         source_revision: SourceRevision,
@@ -127,6 +133,7 @@ class Worker:
             if playhead_only:
                 return None
             started = perf_counter()
+            self.queue.set_activity(run_id, "Building terrain horizons (one time per site, about a minute)")
             horizons = load_or_build_horizons(terrain, origins_m, self.horizon_cache_dir)
             logger.info(
                 "Built terrain horizons for %d receivers in %.1f s",
@@ -172,6 +179,18 @@ def _save_grid(path: Path, grid: SnapshotGrid) -> None:
         staging.replace(path)
 
 
+def _report_alive(queue: RunQueue, stop: Event) -> None:
+    """Tell the dashboard the worker is alive every two seconds, even during a long batch."""
+    while True:
+        try:
+            queue.beat(os.getpid())
+        except sqlite3.Error:
+            # A busy database must not end the heartbeat; the next beat will get through.
+            logger.warning("Could not report that the worker is alive.", exc_info=True)
+        if stop.wait(2.0):
+            return
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -188,9 +207,13 @@ def main() -> None:
     worker = Worker(args.data_dir, queue)
     horizons_retries: dict[str, int] = {}
     lock = FileLock(queue.directory / "worker.lock", timeout=0)
+    stop_beating = Event()
+    owns_lock = False
     try:
         with lock:
+            owns_lock = True
             logger.info("Worker listening in %s", queue.directory)
+            Thread(target=_report_alive, args=(queue, stop_beating), daemon=True).start()
             while True:
                 batch = queue.next_batch(_BATCH_SIZE)
                 if batch is None:
@@ -200,6 +223,7 @@ def main() -> None:
                     continue
                 try:
                     worker.process(batch)
+                    queue.set_activity(None, None)
                     horizons_retries.pop(batch.run_id, None)
                 except HorizonsUnavailable as exc:
                     # Saved samples stay recorded, so a later attempt resumes the run.
@@ -243,6 +267,11 @@ def main() -> None:
         parser.exit(1, "A science worker is already running in this data directory.\n")
     except KeyboardInterrupt:
         logger.info("Worker stopped. Saved samples will be reused on restart.")
+    finally:
+        # A rejected second worker must not mark the real one as stopped.
+        if owns_lock:
+            stop_beating.set()
+            queue.stop_beating()
 
 
 if __name__ == "__main__":

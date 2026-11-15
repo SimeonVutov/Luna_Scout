@@ -4,7 +4,7 @@ import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from time import time_ns
 from typing import Literal
@@ -28,6 +28,21 @@ class RunStatus(BaseModel):
     total_frames: int
     period: PeriodSummary | None
     message: str | None
+    submitted_utc: datetime | None = None
+
+
+class WorkerStatus(BaseModel):
+    """Whether a worker process is alive and what it is doing right now."""
+
+    running: bool
+    pid: int | None
+    activity: str | None
+    run_id: str | None
+
+
+class RunList(BaseModel):
+    worker: WorkerStatus
+    runs: list[RunStatus]
 
 
 class EphemerisChunk(BaseModel):
@@ -44,6 +59,10 @@ class EphemerisChunk(BaseModel):
 class Provenance(BaseModel):
     plan: RunPlan
     ephemeris_chunks: list[EphemerisChunk]
+
+
+# A worker that has not reported for this long is treated as stopped.
+WORKER_TIMEOUT_NS = 10_000_000_000
 
 
 @dataclass(frozen=True)
@@ -92,6 +111,13 @@ class RunQueue:
                     reading TEXT NOT NULL,
                     PRIMARY KEY (run_id, sample_index)
                 );
+                CREATE TABLE IF NOT EXISTS worker (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    pid INTEGER,
+                    heartbeat_ns INTEGER NOT NULL DEFAULT 0,
+                    activity TEXT,
+                    activity_run TEXT
+                );
                 CREATE TABLE IF NOT EXISTS ephemeris_chunks (
                     run_id TEXT NOT NULL REFERENCES runs(run_id),
                     start_index INTEGER NOT NULL,
@@ -121,6 +147,52 @@ class RunQueue:
             if row is None:
                 raise RuntimeError("Could not read the submitted run.")
             return self._status(db, row)
+
+    def list_runs(self, limit: int = 30) -> list[RunStatus]:
+        """The most recently submitted runs first, whatever their state."""
+        with self._connection() as db:
+            rows = db.execute("SELECT * FROM runs ORDER BY submitted DESC LIMIT ?", (limit,)).fetchall()
+            return [self._status(db, row) for row in rows]
+
+    def beat(self, pid: int) -> None:
+        """Report that the worker is alive. Called every few seconds, even during long batches."""
+        with self._connection() as db:
+            db.execute(
+                """
+                INSERT INTO worker (id, pid, heartbeat_ns) VALUES (1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, heartbeat_ns = excluded.heartbeat_ns
+                """,
+                (pid, time_ns()),
+            )
+
+    def set_activity(self, run_id: str | None, activity: str | None) -> None:
+        with self._connection() as db:
+            db.execute(
+                """
+                INSERT INTO worker (id, activity, activity_run) VALUES (1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET activity = excluded.activity, activity_run = excluded.activity_run
+                """,
+                (activity, run_id),
+            )
+
+    def stop_beating(self) -> None:
+        """Mark the worker as stopped right away, instead of after the timeout."""
+        with self._connection() as db:
+            db.execute("UPDATE worker SET heartbeat_ns = 0, activity = NULL, activity_run = NULL WHERE id = 1")
+
+    def worker_status(self, now_ns: int | None = None) -> WorkerStatus:
+        with self._connection() as db:
+            row = db.execute("SELECT * FROM worker WHERE id = 1").fetchone()
+        if row is None:
+            return WorkerStatus(running=False, pid=None, activity=None, run_id=None)
+
+        alive = (now_ns if now_ns is not None else time_ns()) - row["heartbeat_ns"] < WORKER_TIMEOUT_NS
+        return WorkerStatus(
+            running=alive,
+            pid=row["pid"] if alive else None,
+            activity=row["activity"] if alive else None,
+            run_id=row["activity_run"] if alive else None,
+        )
 
     def status(self, run_id: str) -> RunStatus | None:
         with self._connection() as db:
@@ -301,4 +373,5 @@ class RunQueue:
             total_frames=plan.frame_count,
             period=PeriodSummary.model_validate_json(row["period"]) if row["period"] else None,
             message=row["message"],
+            submitted_utc=datetime.fromtimestamp(row["submitted"] / 1e9, UTC),
         )
