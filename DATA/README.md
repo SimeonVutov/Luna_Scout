@@ -48,6 +48,14 @@ The 5 m sites are Connecting Ridge (`Site01`), Shackleton Rim (`Site04`), Nobile
 - **Lit and gentle** counts a point when at least half the Sun is visible and its slope is at most 10°, the limit used in NASA-supported landing-site studies. Missing data widens the upper bound.
 - **Skyline** is the exact terrain horizon from the site centre in 3,600 directions (0.1°), at the panel height and at the mast height, from the same triangulated terrain as the ray tracer. It does not depend on time, so the browser draws the Sun and Earth against it as the timeline moves. The visible share of a disk comes from the geometry, not from sampled rays.
 
+### Sharing results between date ranges
+
+- A run is identified by its site, settings, data checksums and dates. Its **physics key** is the same thing without the dates, so runs that differ only in range compute identical samples at identical times.
+- Submitting a run first copies the matching samples from earlier runs, with their snapshot files hard-linked rather than duplicated. The worker then computes only the gaps. A 3-day run over a finished 1-day run reused 96 of its 289 samples, and the reused day's totals were identical to the original to the last digit.
+- The old closing endpoint of a range is recomputed when it becomes an interior snapshot hour, since the shorter run never produced a snapshot file for it.
+- **Deleting a site:** a custom site's runs, snapshot files and horizon map are removed. A reference site's runs are hidden and kept for 14 days. Submitting a run for it again restores what falls inside the new range and then discards the kept runs, so data outside the timeline does not accumulate.
+- Horizon maps built before sites were labelled cannot be matched to a site and are never removed automatically.
+
 ### Earth visibility
 
 - A ray from a mast at the site centre to Earth's centre decides whether Earth is visible. 37 rays across Earth's disk give the visible fraction.
