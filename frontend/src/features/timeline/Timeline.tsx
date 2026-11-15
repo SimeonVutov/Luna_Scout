@@ -4,6 +4,16 @@ import type { TimeRange } from "../../api/types";
 import { Icon } from "../../Icon";
 import { clockLabel, dateLabel, finalDay, rangeForDates, snapshotAt, snapshotCount, todayRange } from "./time";
 
+const dayFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+const monthFormat = new Intl.DateTimeFormat("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
+
+/** Time of day for one day, date and hour for a few days, then date, then month for long ranges. */
+function tickLabel(time: Date, singleDay: boolean, spanDays: number) {
+  if (singleDay) return clockLabel(time);
+  if (spanDays <= 4) return `${dayFormat.format(time)} ${clockLabel(time)}`;
+  return spanDays > 150 ? monthFormat.format(time) : dayFormat.format(time);
+}
+
 /** Snapshots already computed for one site, drawn as dots under the slider. */
 export type ReadyTrack = { id: string; label?: string; color: string; ready: number[] };
 
@@ -23,6 +33,7 @@ export function Timeline({ range, index, onIndex, onRange, tracks }: {
   const [error, setError] = useState<string | null>(null);
   const ticks = Array.from({ length: Math.min(count, 7) }, (_, position) => position);
   const lastSnapshot = snapshotAt(range, count - 1);
+  const spanDays = count * range.snapshot_minutes / 1440;
   const singleDay = range.start_utc.slice(0, 10) === finalDay(range);
 
   useEffect(() => {
@@ -97,7 +108,7 @@ export function Timeline({ range, index, onIndex, onRange, tracks }: {
           <div className="ticks" aria-hidden="true">
             {ticks.map((tick) => {
               const value = snapshotAt(range, Math.round(tick * (count - 1) / Math.max(1, ticks.length - 1)));
-              return <span key={tick}>{singleDay ? clockLabel(value) : value.toISOString().slice(5, 10)}</span>;
+              return <span key={tick}>{tickLabel(value, singleDay, spanDays)}</span>;
             })}
           </div>
         </div>
