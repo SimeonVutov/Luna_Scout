@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import type { Site, SiteSpec } from "../../api/types";
 import { Icon } from "../../Icon";
-import { coordinatesLabel, maximumSiteRadius, referenceSites } from "./referenceSites";
+import { coordinatesLabel, maximumSiteRadius, referenceGroups } from "./referenceSites";
 
 function SiteForm({ site, onChange, onSave, onCancel, busy }: {
   site: SiteSpec;
@@ -107,18 +107,21 @@ export function SitePanel({ sites, selectedId, draft, busy, onAdd, onDraft, onSa
         })}
       </div>
 
-      {!draft && <div className="reference-sites">
-        <h3>Reference sites</h3>
-        {referenceSites.map((site) => {
-          const existing = sites.find((saved) => saved.latitude_deg === site.latitude_deg && saved.longitude_deg === site.longitude_deg);
-          return <button key={site.name} className="reference-button" type="button" disabled={busy} onClick={() => {
-            if (existing) {
-              onSelect(existing.id);
-              onFly(existing);
-            } else onSave(site);
-          }}><span>{site.name}</span><Icon name={existing ? "arrow" : "plus"} size={15} /></button>;
-        })}
-      </div>}
+      {!draft && <details className="reference-sites" open>
+        <summary>Reference sites</summary>
+        {referenceGroups.map((group) => <div key={group.title} className="reference-group">
+          <h3>{group.title}<small>{group.source}</small></h3>
+          {group.sites.map((site) => {
+            const existing = sites.find((saved) => saved.latitude_deg === site.latitude_deg && saved.longitude_deg === site.longitude_deg);
+            return <button key={site.name} className="reference-button" type="button" disabled={busy} onClick={() => {
+              if (existing) {
+                onSelect(existing.id);
+                onFly(existing);
+              } else onSave(site);
+            }}><span>{site.name}</span><Icon name={existing ? "arrow" : "plus"} size={15} /></button>;
+          })}
+        </div>)}
+      </details>}
     </aside>
   );
 }

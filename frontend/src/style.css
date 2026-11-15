@@ -74,7 +74,10 @@ h1, h2, h3, h4, p { margin: 0; }
 .coordinate-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .form-actions { display: flex; gap: 7px; justify-content: flex-end; }
 .reference-sites { margin-top: 23px; padding-top: 15px; border-top: 1px solid var(--edge); }
-.reference-sites h3 { font-size: .73rem; color: var(--muted); font-weight: 580; margin-bottom: 6px; }
+.reference-sites summary { cursor: pointer; font-size: .73rem; color: var(--muted); font-weight: 580; padding: 2px 0 6px; }
+.reference-group { margin-top: 10px; }
+.reference-group h3 { display: flex; flex-direction: column; gap: 2px; font-size: .7rem; color: #cbd2d8; font-weight: 600; margin-bottom: 4px; }
+.reference-group h3 small { color: var(--muted); font-weight: 450; font-size: .64rem; }
 .reference-button { display: flex; justify-content: space-between; width: 100%; padding: 8px 3px; gap: 6px; align-items: center; color: #cbd2d8; border: 0; border-radius: 4px; background: transparent; font-size: .76rem; text-align: left; }
 .reference-button:hover:not(:disabled) { color: var(--accent); }
 .reference-button svg { flex: 0 0 auto; color: var(--muted); }
