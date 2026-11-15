@@ -14,10 +14,11 @@ import pytest
 
 from lunascout.ephemeris.horizons import EphemerisSample
 from lunascout.simulation.engine import SimulationSettings, prepare_site, trace_snapshot
+from lunascout.simulation.insight import skyline_degrees
 from lunascout.simulation.events import visibility_windows
 from lunascout.simulation.frames import MOON_RADIUS_M, SiteFootprint
 from lunascout.terrain import mesh
-from lunascout.terrain.horizon import build_horizons, ray_visibility
+from lunascout.terrain.horizon import build_horizons, ray_visibility, receiver_axes
 from lunascout.terrain.model import Terrain, TerrainSource, prepare_terrain
 
 _SPACING_M = 100.0
@@ -25,9 +26,14 @@ _SPACING_M = 100.0
 
 def _wall_terrain() -> Terrain:
     """Flat datum around the south pole with a 500 m wall 5.0–5.3 km toward +E."""
+    return _synthetic_terrain(lambda east, north: np.where((east >= 5_000) & (east <= 5_300), 500.0, 0.0))
+
+
+def _synthetic_terrain(height_at) -> Terrain:
+    """Gnomonic grid around the south pole with heights from `height_at(east_m, north_m)`."""
     offsets = np.arange(-20_000.0, 20_000.0 + _SPACING_M, _SPACING_M)
     east, north = np.meshgrid(offsets, offsets)
-    heights = np.where((east >= 5_000) & (east <= 5_300), 500.0, 0.0)
+    heights = height_at(east, north)
 
     # Reciprocal gnomonic depth: D = √(1 + (E/R)² + (N/R)²)/(R + h)
     #   D - Mesh value per node, in m⁻¹; E, N - projected node coordinates, in metres.
@@ -71,6 +77,29 @@ def test_horizon_classification_equals_direct_tracing():
     exact = terrain.trace_rays(observers, np.ascontiguousarray(directions))
     classified = ray_visibility(terrain, horizons, slice(0, 2), observers, directions)
     np.testing.assert_array_equal(classified, exact)
+
+
+def test_single_viewpoint_skyline_equals_the_batch_horizon_kernel():
+    terrain = _wall_terrain()
+    origin = _POLE_OBSERVER[0]
+    east, north, up = receiver_axes(_POLE_OBSERVER)
+    batch_map = build_horizons(terrain, _POLE_OBSERVER)
+
+    single, complete = terrain.horizon_around(origin, (east[0], north[0], up[0]), 720)
+    np.testing.assert_array_equal(single, batch_map.elevation_rad[0])
+    np.testing.assert_array_equal(complete, batch_map.complete[0])
+    assert np.degrees(skyline_degrees(terrain, origin, (east[0], north[0], up[0]))).shape == (3600,)
+
+
+def test_grid_slope_of_a_plane_matches_its_gradient():
+    # Heights rise 0.1 m per metre toward +E, so the slope is atan(0.1) ≈ 5.71° everywhere.
+    terrain = _synthetic_terrain(lambda east, north: 0.1 * east)
+    prepared = prepare_site(SiteFootprint(-90, 0, 500), terrain, SimulationSettings(grid_spacing_m=50))
+
+    slopes = prepared.slope_deg[prepared.inside]
+    assert np.isfinite(slopes).all()
+    np.testing.assert_allclose(slopes, np.degrees(np.arctan(0.1)), atol=0.1)
+    assert np.isnan(prepared.slope_deg[~prepared.inside]).all()
 
 
 def test_visibility_windows_locate_changes_within_one_second():
