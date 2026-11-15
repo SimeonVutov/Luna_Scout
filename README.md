@@ -1,10 +1,29 @@
 # LunaScout
 
-LunaScout explores lunar landing sites near the south pole. The frontend prototype lets you create and inspect one site at a time with synthetic sunlight and Earth visibility on a shared UTC timeline.
+LunaScout compares sunlight and line of sight to Earth for landing sites near the lunar south pole. The dashboard combines NASA photography, local 3D terrain from LOLA, and time-indexed simulations from the Python backend.
 
 ## Run locally
 
-Requires Node.js 22.12 or later.
+Requires Python 3.12 or later, [uv](https://docs.astral.sh/uv/), and Node.js 22.12 or later. Use three terminals from the project root. The first data download is about 480 MiB. Use a real project email or URL in the Horizons request header.
+
+In the worker terminal, install the backend, download the data, and start the simulation worker.
+
+```sh
+cd backend
+uv sync --locked
+uv run --locked lunascout-science fetch-data
+export LUNASCOUT_HORIZONS_CONTACT='contact@example.org'
+uv run --locked lunascout-worker
+```
+
+Run the API in a second terminal.
+
+```sh
+cd backend
+uv run --locked uvicorn lunascout.api.main:app --port 8000
+```
+
+Run the frontend in a third terminal and open the URL Vite prints.
 
 ```sh
 cd frontend
@@ -12,69 +31,50 @@ npm ci
 npm run dev
 ```
 
-Open the URL Vite prints. The dashboard saves sites in the current browser by default.
+Vite proxies `/api` to port 8000. The API and worker share the `DATA/` directory. Set `LUNASCOUT_DATA_DIR` to the same absolute path in both terminals to use a different directory. The API documentation is at [localhost:8000/docs](http://localhost:8000/docs).
 
-### South-polar map
+## Dashboard
 
-LunaScout opens directly in the OpenLayers map in a lunar south-polar stereographic projection. It streams the WAC overview and loads finer NAC tiles as you zoom into the inner polar region. The finest published NAC tile matrix is about 4.18 projected metres per pixel. The underlying mosaic has 1 m sampling. [NASA Moon Trek tile services](https://trek.nasa.gov/tiles/apidoc/trekAPI.html?body=moon)
+1. Choose **Shackleton Rim** or **Connecting Ridge** in the reference sites, or add a site by clicking the map. **Go to** centers the map on a saved site.
+2. Select **3D terrain** to inspect real elevation around the selected site. Drag to orbit, right-drag or Shift-drag to pan, and scroll to zoom toward the pointer. **Regional view** widens the terrain window to 32 km. **Reset view** restores the initial camera. The preview uses metre-for-metre scaling and requires WebGL 2.
+3. Select the UTC date range, choose the time on the timeline, and click **Run simulation**. The selected hour gets priority. The timeline marks available snapshots.
+4. Use **Solar visibility** to toggle the result on the map or terrain. The same colors identify full and partial disk visibility, shadow, and unresolved samples. The 3D colors interpolate between mesh vertices. The map displays the sampled cells.
+5. Choose a second saved site under **Compare with** and click **Run comparison**. Both sites use the same UTC range and simulation settings. The comparison shows matched snapshot values and period totals as they become available.
 
-The map displays optical imagery and preserves the dark pixels in the source tiles, including photographed shadows.
+Use **Simulation settings** to change grid spacing, disk ray count, Earth mast height, or time integration cadence. Hourly map snapshots and the default 15-minute integration cadence serve different purposes. Change the integration cadence for finer timing. A completed run is reused for identical physical inputs and source files.
 
-The 2D map compass shows the direction at the top of the map and its center coordinates. At the exact south pole, every outward direction is north. The amber 87.5°S line marks coverage of the regional PDS LOLA 5 m elevation grid. The teal 85.5°S line marks the nominal NAC photo mosaic limit, and the small outlined rectangle marks the Shackleton orthophoto. The terrain line marks dataset availability. The current simulation still uses demo results. The optical close-ups fade in gradually as you zoom.
+Sites are saved in your browser by default. To use the API catalog, set `VITE_SITE_STORAGE=api` in `frontend/.env.local` and restart Vite. Both catalog modes can submit scientific runs.
 
-### Native 1 m imagery at Shackleton Rim
+## Map imagery and terrain
 
-The 2D map requests the Shackleton tiles as you zoom into the mapped area. Choose **Shackleton Rim**, click **Go to**, and zoom in. The locally served tiles come from NASA LRO's 5 × 5 km LROC orthophoto, `NAC_DTM_ESALL_SR12_NACORT04_1M`. Its finest tiles preserve the original 1 m pixel grid. Outside this footprint, the app uses the broader streamed imagery. [LROC source and GeoTIFF download](https://data.lroc.im-ldi.com/lroc/view_rdr_product/NAC_DTM_ESALL_SR12_NACORT04_1M)
+The 2D map opens at the south pole. **Whole Moon** switches to a global longitude/latitude map with NASA Moon Trek LROC WAC photographs (approximately 100 m source pixels), where sites can be placed and saved at any latitude or longitude. **South pole** restores the stereographic map with the existing WAC and detailed NAC photographs. The Shackleton-only orthophoto square is no longer displayed. Photographed shadows are preserved. Terrain previews and scientific simulations still use the supplied south-polar DEMs and support site centers from 90°S to 60°S. [NASA Moon Trek tile services](https://trek.nasa.gov/tiles/apidoc/trekAPI.html?body=moon) · [Shackleton Rim LROC orthophoto](https://data.lroc.im-ldi.com/lroc/view_rdr_product/NAC_DTM_ESALL_SR12_NACORT04_1M)
 
-### Use the dashboard
+The **3D terrain** view draws a bounded patch of the same LOLA height model used for the ray tracing. It uses neutral lighting to show relief. Solar colors come from the simulation at the selected time. The map's amber 87.5°S line marks the published PDS LOLA 5 m dataset extent. The solver's datasets and effective coverage are recorded separately. [NASA local LOLA grids](https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/) · [NASA regional LOLA grids](https://pgda.gsfc.nasa.gov/products/90)
 
-1. Drag the polar map or use the zoom controls. **South pole** resets the view.
-2. Choose **Add site**, click the Moon to set its center, enter a name and radius, and save. Coordinates can also be entered directly. The outline shows the footprint.
-3. Select a saved site to see its details. Use **Go to**, **Edit**, or **Delete** to manage it.
-4. Use the bottom timeline to step, scrub, or play through hourly samples. The date selector changes the UTC range for the dashboard. The right panel shows the selected time and period.
-5. **Demo data** labels the synthetic values. The tint on the selected circle illustrates lit fraction. The polar map uses NASA LROC tiles.
+## Run a stand-alone snapshot
 
-### Optional server-side site catalog
-
-To save sites through the existing backend, set `VITE_SITE_STORAGE=api` in `frontend/.env.local` and run the API in a second terminal. It requires Python 3.12 or later and [uv](https://docs.astral.sh/uv/).
+From `backend/`, after downloading the data and setting the Horizons contact, run one timestamp without starting the web app.
 
 ```sh
-cd backend
-uv sync
-uv run uvicorn lunascout.api.main:app --reload
+uv run --locked lunascout-science snapshot \
+  --latitude -89.7668 --longitude -171.87 --radius-m 500 \
+  --at 2026-11-14T12:00:00Z \
+  --grid-spacing-m 20 --solar-disk-samples 37 --mast-height-m 2 \
+  --output ../DATA/runs/shackleton-20261114T1200
 ```
 
-Restart Vite after changing the setting. Vite proxies `/api` to port 8000 and the API documentation is at [localhost:8000/docs](http://localhost:8000/docs). The browser and server catalogs are separate.
+The command writes `summary.json` and `grid.npz`. See the [data guide](DATA/README.md) for exact dataset names, output fields, and physical assumptions.
 
 ## Architecture
 
 | Location | Responsibility |
 |---|---|
-| `frontend/src/features/{sites,globe,timeline,results}` | Saved-site controls, the OpenLayers viewport, the shared UTC playhead and the selected site's results. |
-| `frontend/src/api/` | Request client and TypeScript types for the site catalog. |
-| `frontend/src/features/results/demoResults.ts` | Synthetic timeline values, isolated from the map and results components. |
-| `backend/lunascout/api/` | FastAPI endpoints, validated site/run inputs and the SQLite site catalog. |
-| `backend/lunascout/jobs/` | Run submission and future worker dispatch, fairness and batch progress. |
-| `backend/lunascout/terrain/` | NASA LOLA ingest, local/regional terrain, height lookup, coverage and spatial indexing. |
-| `backend/lunascout/ephemeris/` | Cached Horizons Sun/Earth ephemerides and SPICE transforms. |
-| `backend/lunascout/simulation/` | Per-timestamp illumination and Earth visibility, then time integration and event windows. |
-| `DATA/` | Raw sources, processed terrain, reusable results and versioned runs. |
+| `frontend/src/features/{globe,terrain,results,timeline}` | Photography map, orbitable elevation mesh, overlays, comparison, and shared UTC playback. |
+| `backend/lunascout/api/` | Site catalog, typed run and terrain endpoints, and a single progress stream per dashboard. |
+| `backend/lunascout/jobs/` | Persistent run queue, playhead priority, fair batches, and time integration. |
+| `backend/lunascout/ephemeris/` | JPL Horizons queries and NAIF lunar frame transformations. |
+| `backend/lunascout/terrain/` | LOLA elevation grids, ray intersections, and local preview sampling. |
+| `backend/lunascout/simulation/` | Site grid, finite Sun irradiance, eclipse masking, and Earth center visibility. |
+| `DATA/` | Downloaded science sources, archived Horizons responses, and run outputs. |
 
-### Future simulation integration
-
-- A site record holds its name, Moon-fixed latitude and longitude, and radius. The dashboard owns one UTC range for all sites. The date picker includes the last day and sends an exclusive end time at the following midnight.
-- Run identity should include the geometry, date range, mast height, snapshot cadence and source/model revisions. A label edit has no effect on that identity.
-- Start with one worker process. First compute the shared playhead timestamp for each queued site, then rotate through short batches. Keep science cadence independent of the published hourly snapshots so the solver can resolve events between frames.
-- Persist the snapshot and its scientific coverage before publishing a notification. Use one dashboard-wide Server-Sent Events connection for state changes and ready timestamps. Fetch the actual map arrays on demand and reload the ready index on reconnect.
-- The 2D map will display the backend's computed results. The tile stream and camera can vary independently of scientific terrain.
-
-### Starter behavior and next integration
-
-The backend simulation endpoints remain scaffolded. Replace the synthetic results provider when the worker can publish its first real snapshot. The prototype currently displays one selected site.
-
-The next integration is one real timestamp at each reference site. Read the relevant fine and regional LOLA DEMs, resolve the ground coordinates, supply Horizons-derived Sun/Earth directions in the same lunar frame, and expose an immutable result with its validity mask. Then connect batch scheduling, progress events and side-by-side summaries.
-
-## Data credits
-
-- Reference-site coordinates come from Table A2-2. [NASA Lunar Surface Data Book](https://ntrs.nasa.gov/citations/20230007818)
-- Candidate scientific terrain and ephemerides. [NASA south-pole LOLA](https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/) · [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) · [NAIF SPICE](https://naif.jpl.nasa.gov/naif/)
+Reference-site coordinates come from Table A2-2 of the [NASA Lunar Surface Data Book](https://ntrs.nasa.gov/citations/20230007818).
