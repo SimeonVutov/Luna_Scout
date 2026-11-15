@@ -20,6 +20,7 @@ from ..simulation.frames import SiteFootprint
 from ..terrain.model import TerrainError
 from ..terrain.preview import PreviewScale, TerrainPreview, sample_preview
 from . import site_store
+from .insight import InsightService, SiteInsight
 from .models import RunPriority, RunSpec, SiteSpec
 
 RunId = Annotated[str, PathParameter(pattern=r"^[a-f0-9]{64}$")]
@@ -44,6 +45,7 @@ class FramePayload(BaseModel):
 
 def science_router(data_dir: Path, queue: RunQueue) -> APIRouter:
     router = APIRouter(prefix="/api")
+    insights = InsightService(data_dir)
 
     @router.post("/runs", status_code=202)
     def request_run(spec: RunSpec) -> RunStatus:
@@ -162,6 +164,32 @@ def science_router(data_dir: Path, queue: RunQueue) -> APIRouter:
             raise HTTPException(422, str(exc)) from exc
         except TerrainError as exc:
             logger.warning("Terrain preview unavailable: %s", exc)
+            if str(exc).startswith("Missing regional LOLA"):
+                raise HTTPException(
+                    503, "Download the terrain with lunascout-science fetch-data."
+                ) from exc
+            raise HTTPException(422, str(exc)) from exc
+
+    @router.post("/terrain/insight")
+    def terrain_insight(
+        spec: SiteSpec,
+        grid_spacing_m: Annotated[float, Query(gt=0)] = 20,
+        collector_height_m: Annotated[float, Query(ge=0)] = 2,
+        mast_height_m: Annotated[float, Query(ge=0)] = 2,
+    ) -> SiteInsight:
+        """Terrain detail, slope and skyline for a site. Independent of time."""
+        try:
+            site = SiteFootprint(spec.latitude_deg, spec.longitude_deg, spec.radius_m)
+            settings = SimulationSettings(
+                grid_spacing_m=grid_spacing_m,
+                collector_height_m=collector_height_m,
+                mast_height_m=mast_height_m,
+            )
+            return insights.insight(site, settings)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except TerrainError as exc:
+            logger.warning("Terrain insight unavailable: %s", exc)
             if str(exc).startswith("Missing regional LOLA"):
                 raise HTTPException(
                     503, "Download the terrain with lunascout-science fetch-data."
