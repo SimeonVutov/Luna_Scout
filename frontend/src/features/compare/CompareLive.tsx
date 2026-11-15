@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from "react";
-import type { Reading, RunStatus, SimulationOptions, Site, SiteContext, SiteInsight, SunlightGrid, TimeRange } from "../../api/types";
+import type { Reading, RunStatus, SimulationOptions, Site, SiteContext, SiteInsight, SiteMap, SunlightGrid, TimeRange } from "../../api/types";
 import { Icon } from "../../Icon";
 import { SouthPoleMap } from "../globe/SouthPoleMap";
 import type { MapLayer } from "../globe/SouthPoleMap";
@@ -20,6 +20,7 @@ type PaneData = {
   sunlight: SunlightGrid | null;
   insight: SiteInsight | null;
   context: SiteContext | null;
+  siteMap: SiteMap | null;
 };
 
 type LiveProps = {
@@ -99,11 +100,11 @@ function Pane({ slot, data, at, layer, onLayerChange, view, range, timeIndex, op
     <div className="pane-map">
       {view === "3d" ? <Suspense fallback={<p className="stage-status" role="status">Opening the 3D view…</p>}>
         <SpaceView compact active sites={[site]} selected={site} focus={cameraTarget} run={data.run}
-          range={range} timeIndex={timeIndex} options={options} sunlight={data.sunlight} context={data.context}
+          range={range} timeIndex={timeIndex} options={options} sunlight={data.sunlight} context={data.context} siteMap={data.siteMap}
           layerState={spaceLayers} onLayers={onSpaceLayers} onSelect={() => undefined} />
       </Suspense> : <SouthPoleMap southOnly sites={[site]} selectedId={site.id} draft={null} picking={false}
         onPick={() => undefined} onSelect={() => undefined} cameraTarget={cameraTarget}
-        sunlight={data.sunlight} slope={data.insight?.slope_grid ?? null} context={data.context} layer={layer} onLayerChange={onLayerChange} />}
+        sunlight={data.sunlight} slope={data.insight?.slope_grid ?? null} context={data.context} siteMap={data.siteMap} layer={layer} onLayerChange={onLayerChange} />}
     </div>
   </section>;
 }

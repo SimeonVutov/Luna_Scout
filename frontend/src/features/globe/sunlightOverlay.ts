@@ -1,9 +1,10 @@
 import { register } from "ol/proj/proj4";
 import Static from "ol/source/ImageStatic";
 import proj4 from "proj4";
-import type { Site, SiteContext, SlopeGrid, SunlightGrid } from "../../api/types";
+import type { Site, SiteContext, SiteMap, SlopeGrid, SunlightGrid } from "../../api/types";
+import { bestSpotClass, bestSpotColors } from "../results/bestSpotColors";
 import { contextColour } from "../results/contextColors";
-import type { ContextLayer } from "../results/mapLayers";
+import type { BestSpotLayer, ContextLayer } from "../results/mapLayers";
 import { slopeClass } from "../results/slopeColors";
 import { earthClass, earthColors, sunlightClass, sunlightColors } from "../results/sunlightColors";
 
@@ -32,6 +33,26 @@ function earthPaint(grid: SunlightGrid, alpha: number): Paint {
     const [red, green, blue] = earthColors[category];
     return [red, green, blue, alpha];
   };
+}
+
+function bestSpotPaint(map: SiteMap, layer: BestSpotLayer, alpha: number): Paint {
+  return (index) => {
+    const spot = bestSpotClass(map, index, layer);
+    if (!spot) return null;
+
+    // The spots that fail the standard are drawn fainter, so the good ones stand out.
+    return [...bestSpotColors[spot], spot === "neither" ? Math.round(alpha * 0.55) : alpha] as const;
+  };
+}
+
+/** The best spots of a site over the whole run, as a map overlay. */
+export function bestSpotOverlay(site: Site, map: SiteMap, layer: BestSpotLayer) {
+  return gridOverlay(site, map.offsets_m, bestSpotPaint(map, layer, 190));
+}
+
+/** The best spots of a site over the whole run, as a picture for the 3D terrain. */
+export function bestSpotCanvas(site: Site, map: SiteMap, layer: BestSpotLayer) {
+  return gridCanvas(site, map.offsets_m, bestSpotPaint(map, layer, 255));
 }
 
 const contextValues: Record<ContextLayer, (context: SiteContext) => (number | null)[]> = {

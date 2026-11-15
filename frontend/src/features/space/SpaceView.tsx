@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import type { RayFan, RunStatus, SimulationOptions, Site, SiteContext, SunlightGrid, TimeRange } from "../../api/types";
-import { contextCanvas, earthCanvas, sunlightCanvas } from "../globe/sunlightOverlay";
+import type { RayFan, RunStatus, SimulationOptions, Site, SiteContext, SiteMap, SunlightGrid, TimeRange } from "../../api/types";
+import { bestSpotCanvas, contextCanvas, earthCanvas, sunlightCanvas } from "../globe/sunlightOverlay";
+import { hasEarthShare } from "../results/bestSpotColors";
 import { LayerLegend } from "../results/LayerLegend";
 import { LayerPicker } from "../results/LayerPicker";
-import { isContextLayer, layerAvailability } from "../results/mapLayers";
+import { isBestSpotLayer, isContextLayer, layerAvailability } from "../results/mapLayers";
 import { wholePercent } from "../results/format";
 import type { RigView } from "./cameraRig";
 import { defaultSpaceLayers } from "./layers";
@@ -41,7 +42,7 @@ function RayCount({ name, colour, fans, where }: { name: string; colour: string;
  * The Moon stays still and the sky moves around it, so playing the timeline never spins the
  * ground. Zooming toward the south pole loads LOLA terrain in growing detail.
  */
-export function SpaceView({ active, sites, selected, focus, run, range, timeIndex, options, sunlight, context, onSelect, layerState, onLayers, compact = false }: {
+export function SpaceView({ active, sites, selected, focus, run, range, timeIndex, options, sunlight, context, siteMap, onSelect, layerState, onLayers, compact = false }: {
   /** Whether the view is on screen; data is only requested while it is. */
   active: boolean;
   sites: Site[];
@@ -57,6 +58,8 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
   sunlight: SunlightGrid | null;
   /** NASA's long-term maps over the selected site. */
   context: SiteContext | null;
+  /** How each point of the selected site fared over the whole run. */
+  siteMap: SiteMap | null;
   onSelect: (id: string) => void;
   /** Layer settings owned by the parent, so two views can show the same thing. */
   layerState?: SpaceLayers;
@@ -139,9 +142,10 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
       if (resultLayer === "sunlight" && sunlight) painted = sunlightCanvas(selected, sunlight);
       else if (resultLayer === "earth" && sunlight && hasEarth) painted = earthCanvas(selected, sunlight);
       else if (isContextLayer(resultLayer) && context) painted = contextCanvas(selected, context, resultLayer);
+      else if (isBestSpotLayer(resultLayer) && siteMap) painted = bestSpotCanvas(selected, siteMap, resultLayer);
     }
     scene.current?.setResultGrid(painted && selected ? { site: selected, ...painted } : null);
-  }, [ready, selected, sunlight, resultLayer, hasEarth, context]);
+  }, [ready, selected, sunlight, resultLayer, hasEarth, context, siteMap]);
 
   const rays = supported ? tracing.rays : null;
   useEffect(() => {
@@ -178,7 +182,8 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
 
       <div className="space-layers">
         <LayerPicker value={resultLayer} onChange={setResultLayer}
-          unavailable={layerAvailability({ sunlight: sunlight !== null, earth: hasEarth, slope: false, context: context !== null, slopeSupported: false })} />
+          unavailable={layerAvailability({ sunlight: sunlight !== null, earth: hasEarth, slope: false, context: context !== null, slopeSupported: false,
+            siteMap: siteMap !== null, siteMapEarth: siteMap !== null && hasEarthShare(siteMap) })} />
         <div className="layer-buttons" role="group" aria-label="3D layers">
           <button className="button secondary" type="button" aria-pressed={sunRays} disabled={!supported} title={rayHint} onClick={() => setSunRays(!sunRays)}>Sun rays</button>
           <button className="button secondary" type="button" aria-pressed={earthRays} disabled={!supported} title={rayHint} onClick={() => setEarthRays(!earthRays)}>Earth rays</button>

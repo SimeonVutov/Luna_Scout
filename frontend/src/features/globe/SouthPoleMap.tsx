@@ -11,12 +11,13 @@ import { getPointResolution } from "ol/proj";
 import VectorSource from "ol/source/Vector";
 import { Circle as CircleStyle, Fill, Stroke, Style } from "ol/style";
 import proj4 from "proj4";
-import type { Coordinate, Site, SiteContext, SiteSpec, SlopeGrid, SunlightGrid } from "../../api/types";
+import type { Coordinate, Site, SiteContext, SiteMap, SiteSpec, SlopeGrid, SunlightGrid } from "../../api/types";
 import { LayerLegend } from "../results/LayerLegend";
 import { LayerPicker } from "../results/LayerPicker";
-import { isContextLayer, layerAvailability } from "../results/mapLayers";
+import { hasEarthShare } from "../results/bestSpotColors";
+import { isBestSpotLayer, isContextLayer, layerAvailability } from "../results/mapLayers";
 import type { MapLayer } from "../results/mapLayers";
-import { contextOverlay, earthOverlay, slopeOverlay, sunlightOverlay } from "./sunlightOverlay";
+import { bestSpotOverlay, contextOverlay, earthOverlay, slopeOverlay, sunlightOverlay } from "./sunlightOverlay";
 import { MapCompass } from "./MapCompass";
 import type { Orientation } from "./MapCompass";
 import { detailExtent, detailLayer, edge, geographic, globalExtent, globalImagery, polar, polarImagery } from "./polarImagery";
@@ -58,6 +59,8 @@ type Props = {
   slope: SlopeGrid | null;
   /** NASA's long-term maps over the selected site. */
   context: SiteContext | null;
+  /** How each point of the selected site fared over the whole run. */
+  siteMap: SiteMap | null;
   layer: MapLayer;
   onLayerChange: (layer: MapLayer) => void;
   /** Keep the map on the south-polar view only, with no Whole Moon option. */
@@ -131,16 +134,17 @@ export function SouthPoleMap(props: Props) {
   const { sites, selectedId, draft, sunlight, slope, layer, cameraTarget } = props;
   const selectedSite = sites.find((site) => site.id === selectedId);
   const hasEarth = sunlight?.earth_visible_fraction_lower != null;
-  const { context } = props;
-  const overlayShown = layer === "sunlight" ? sunlight !== null : layer === "earth" ? hasEarth : layer === "slope" ? slope !== null : isContextLayer(layer) ? context !== null : false;
+  const { context, siteMap } = props;
+  const overlayShown = layerHasData(layer, { sunlight, hasEarth, slope, context, siteMap });
   useEffect(() => {
     let image = null;
     if (selectedSite && layer === "sunlight" && sunlight) image = sunlightOverlay(selectedSite, sunlight);
     if (selectedSite && layer === "earth" && sunlight && hasEarth) image = earthOverlay(selectedSite, sunlight);
     if (selectedSite && layer === "slope" && slope) image = slopeOverlay(selectedSite, slope);
     if (selectedSite && isContextLayer(layer) && context) image = contextOverlay(selectedSite, context, layer);
+    if (selectedSite && isBestSpotLayer(layer) && siteMap) image = bestSpotOverlay(selectedSite, siteMap, layer);
     overlay.setSource(image);
-  }, [overlay, selectedSite, sunlight, slope, layer, hasEarth, context]);
+  }, [overlay, selectedSite, sunlight, slope, layer, hasEarth, context, siteMap]);
   useEffect(() => {
     source.clear();
     for (const site of [...sites, ...(draft ? [{ ...draft, id: null }] : [])]) {
@@ -187,9 +191,10 @@ export function SouthPoleMap(props: Props) {
     <div className="map-mount" ref={target} />
     <div className="viewport-label">{mode === "south" ? "South pole" : "Whole Moon"} · {scale.toLocaleString(undefined, { maximumFractionDigits: 2 })} m / screen px</div>
     <MapCompass orientation={orientation} />
-    {!props.picking && (sunlight || slope || context) && <div className="map-simulation-key">
+    {!props.picking && (sunlight || slope || context || siteMap) && <div className="map-simulation-key">
       <LayerPicker value={layer} onChange={props.onLayerChange}
-        unavailable={layerAvailability({ sunlight: sunlight !== null, earth: hasEarth, slope: slope !== null, context: context !== null, slopeSupported: true })} />
+        unavailable={layerAvailability({ sunlight: sunlight !== null, earth: hasEarth, slope: slope !== null, context: context !== null, slopeSupported: true,
+          siteMap: siteMap !== null, siteMapEarth: siteMap !== null && hasEarthShare(siteMap) })} />
       <LayerLegend layer={layer} />
     </div>}
     {props.picking && <p className="map-instruction">Click the map to place the site center</p>}
@@ -208,4 +213,16 @@ export function SouthPoleMap(props: Props) {
       <a className="map-credit" href="https://trek.nasa.gov/moon/" target="_blank" rel="noreferrer">NASA Moon Trek · LROC WAC / NAC</a>
     </div>
   </section>;
+}
+
+/** Whether the data a layer draws is available, so the map can leave its colour off a site without it. */
+function layerHasData(layer: MapLayer, data: {
+  sunlight: SunlightGrid | null; hasEarth: boolean; slope: SlopeGrid | null; context: SiteContext | null; siteMap: SiteMap | null;
+}) {
+  if (layer === "sunlight") return data.sunlight !== null;
+  if (layer === "earth") return data.hasEarth;
+  if (layer === "slope") return data.slope !== null;
+  if (isContextLayer(layer)) return data.context !== null;
+  if (isBestSpotLayer(layer)) return data.siteMap !== null;
+  return false;
 }

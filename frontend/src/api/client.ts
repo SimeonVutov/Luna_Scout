@@ -1,4 +1,4 @@
-import type { FramePayload, Reading, RunList, RunRequest, RunStatus, RunRays, SimulationOptions, Site, SiteContext, SiteInsight, SiteRays, SiteSpec, SkyBatch, TimeRange } from "./types";
+import type { FramePayload, Reading, RunList, RunRequest, RunStatus, RunRays, SimulationOptions, Site, SiteContext, SiteMap, SiteInsight, SiteRays, SiteSpec, SkyBatch, TimeRange } from "./types";
 
 /** A failed API call. `status` is null when the server could not be reached at all. */
 export class ApiError extends Error {
@@ -76,6 +76,11 @@ export function skyBatch(range: TimeRange, integrationMinutes: number, index: nu
     integration_minutes: String(integrationMinutes), index: String(index),
   });
   return send<SkyBatch>(`/sky?${query}`, "GET", undefined, signal);
+}
+
+/** How every point of a finished run's site fared over the whole run. */
+export function runSiteMap(id: string, signal: AbortSignal) {
+  return send<SiteMap>(`/runs/${id}/site-map`, "GET", undefined, signal);
 }
 
 /** The rays of a published snapshot, saved by the worker with the frame. */

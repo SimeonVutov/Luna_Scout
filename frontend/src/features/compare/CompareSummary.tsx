@@ -1,13 +1,22 @@
 import { useState } from "react";
-import type { Bounds, PeriodSummary, Reading, RunStatus, Site, SiteContext, SiteInsight, TimeRange } from "../../api/types";
-import { bound, decimal, energy, longestLabel, middle, ratio, wholePercent } from "../results/format";
+import type { PeriodSummary, Reading, RunStatus, Site, SiteContext, SiteInsight, SiteMap, TimeRange } from "../../api/types";
+import { decimal, middle, ratio, wholePercent } from "../results/format";
 import { Legend, LineChart, PairedBars, WindowStrips, niceMax } from "./charts";
 import type { BarGroup, LineSeries, StripRow } from "./charts";
 import { slotColor, slotLabel, slots } from "./slots";
+import { scoreGroups, winner } from "./scorecard";
+import type { RowData } from "./scorecard";
 import type { Slot } from "./slots";
 import "./compare.css";
 
-type SummaryPane = { site: Site | null; run: RunStatus | null; series: Reading[]; context: SiteContext | null; insight: SiteInsight | null };
+type SummaryPane = {
+  site: Site | null;
+  run: RunStatus | null;
+  series: Reading[];
+  context: SiteContext | null;
+  insight: SiteInsight | null;
+  siteMap: SiteMap | null;
+};
 
 /** What a chart can plot over time. Fractions are drawn on a 0–100% axis. */
 type Measure = {
@@ -30,83 +39,6 @@ const earthMeasures: Measure[] = [
   { id: "disk", label: "Earth disk visible from the mast", fraction: true, get: (reading) => middle(reading.earth_disk_visible_fraction) },
   { id: "area", label: "Area seeing at least half of Earth", fraction: true, get: (reading) => middle(reading.summary.earth_visible_area_fraction) },
 ];
-
-/** Everything a scorecard row can read for one site. */
-type RowData = { period: PeriodSummary | null; context: SiteContext | null; insight: SiteInsight | null };
-
-type ScoreRow = {
-  label: string;
-  /** Which value is better; "none" for facts that are neither good nor bad on their own. */
-  better: "higher" | "lower" | "none";
-  /** Whether the value comes from the simulation (and so waits for the run). */
-  needsRun: boolean;
-  number: (data: RowData) => number | null;
-  text: (data: RowData) => string;
-};
-
-const hours = (bounds: Bounds | null | undefined) => bound(bounds, decimal, " h");
-const percent = (value: number | null | undefined) => value === null || value === undefined ? "—" : wholePercent.format(value);
-
-const run = (label: string, better: ScoreRow["better"], number: (p: PeriodSummary) => number | null, text: (p: PeriodSummary) => string): ScoreRow => ({
-  label, better, needsRun: true,
-  number: (data) => data.period ? number(data.period) : null,
-  text: (data) => data.period ? text(data.period) : "—",
-});
-
-const fact = (label: string, better: ScoreRow["better"], value: (data: RowData) => number | null): ScoreRow => ({
-  label, better, needsRun: false, number: value, text: (data) => percent(value(data)),
-});
-
-const scoreGroups: { title: string; note: string; rows: ScoreRow[] }[] = [
-  {
-    title: "Power",
-    note: "For the selected dates",
-    rows: [
-      run("Solar energy on receiver", "higher", (p) => middle(p.incident_energy_kwh_m2), (p) => bound(p.incident_energy_kwh_m2, energy, " kWh/m²")),
-      run("Sunlit time · any Sun", "higher", (p) => middle(p.sunlit_hours), (p) => hours(p.sunlit_hours)),
-      run("Sunlit time · at least half the Sun", "higher", (p) => middle(p.half_disk_sunlit_hours), (p) => hours(p.half_disk_sunlit_hours)),
-      run("Longest day · continuous sunlight", "higher", (p) => p.longest_daylight?.hours ?? 0, (p) => longestLabel(p.longest_daylight)),
-      run("Longest darkness at centre", "lower", (p) => p.longest_darkness?.hours ?? 0, (p) => longestLabel(p.longest_darkness)),
-    ],
-  },
-  {
-    title: "Communication",
-    note: "For the selected dates",
-    rows: [
-      run("Earth visible at mast", "higher", (p) => middle(p.earth_visible_hours), (p) => hours(p.earth_visible_hours)),
-      run("Longest Earth contact", "higher", (p) => p.longest_earth_contact?.hours ?? 0, (p) => longestLabel(p.longest_earth_contact)),
-      run("Longest Earth blackout", "lower", (p) => p.longest_earth_blackout?.hours ?? 0, (p) => longestLabel(p.longest_earth_blackout)),
-    ],
-  },
-  {
-    title: "Long-term and terrain",
-    note: "NASA maps averaged over 18.6 years, over the whole site",
-    rows: [
-      fact("Average sunlight", "higher", (d) => d.context?.summary.average_sunlight ?? null),
-      fact("Average Earth visibility", "higher", (d) => d.context?.summary.average_earth ?? null),
-      fact("Permanent shadow (cold traps)", "none", (d) => d.context?.summary.permanent_shadow_share ?? null),
-      fact("Open sky", "higher", (d) => d.context?.summary.sky_openness ?? null),
-      fact("Ground at or below 10°", "higher", (d) => d.insight?.summary.gentle_area_fractions["10"] ?? null),
-      {
-        label: "Mean slope", better: "lower", needsRun: false,
-        number: (d) => d.insight?.summary.slope_mean_deg ?? null,
-        text: (d) => d.insight?.summary.slope_mean_deg == null ? "—" : `${decimal.format(d.insight.summary.slope_mean_deg)}°`,
-      },
-    ],
-  },
-];
-
-/** The better site for a row, or null when the values are missing or within 2% of each other. */
-function winner(row: ScoreRow, a: RowData, b: RowData): Slot | null {
-  if (row.better === "none") return null;
-  const first = row.number(a);
-  const second = row.number(b);
-  if (first === null || second === null) return null;
-  const spread = Math.abs(first - second);
-  if (spread <= 0.02 * Math.max(Math.abs(first), Math.abs(second)) || spread < 0.05) return null;
-  const firstWins = row.better === "higher" ? first > second : first < second;
-  return firstWins ? "a" : "b";
-}
 
 function seriesFor(slot: Slot, readings: Reading[], measure: Measure): LineSeries {
   return {
@@ -158,8 +90,8 @@ export function CompareSummary({ panes, range, at }: { panes: Record<Slot, Summa
   }
 
   const data: Record<Slot, RowData> = {
-    a: { period: periods.a, context: panes.a.context, insight: panes.a.insight },
-    b: { period: periods.b, context: panes.b.context, insight: panes.b.insight },
+    a: { period: periods.a, context: panes.a.context, insight: panes.a.insight, siteMap: panes.a.siteMap },
+    b: { period: periods.b, context: panes.b.context, insight: panes.b.insight, siteMap: panes.b.siteMap },
   };
   const stripRows: StripRow[] = slots.flatMap((slot) => [
     { slot, kind: "Sun" as const, windows: periods[slot]?.sun_windows ?? null },
@@ -187,13 +119,13 @@ export function CompareSummary({ panes, range, at }: { panes: Record<Slot, Summa
           {slots.map((slot) => <th key={slot} scope="col"><span className="site-chip small" style={{ background: slotColor[slot] }}>{slotLabel[slot]}</span>{panes[slot].site!.name}</th>)}
         </tr></thead>
         {scoreGroups.map((group) => <tbody key={group.title}>
-          <tr className="group-row"><th colSpan={3} scope="colgroup">{group.title}<small>{group.note}</small></th></tr>
+          <tr className="group-row"><th colSpan={3} scope="colgroup">{group.title}<small>{group.note(data.a.siteMap ?? data.b.siteMap)}</small></th></tr>
           {group.rows.map((row) => {
             const best = winner(row, data.a, data.b);
             return <tr key={row.label}>
               <th scope="row">{row.label}</th>
               {slots.map((slot) => <td key={slot} className={best === slot ? "best" : ""}>
-                {row.needsRun && !periods[slot] ? <span className="pending">{panes[slot].run ? "Running…" : "—"}</span>
+                {!row.ready(data[slot]) ? <span className="pending">{panes[slot].run ? "Running…" : "—"}</span>
                   : <>{row.text(data[slot])}{best === slot && <span className="winner" title="Better for this metric" aria-label="better">▲</span>}</>}
               </td>)}
             </tr>;

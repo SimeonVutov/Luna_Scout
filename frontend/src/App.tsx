@@ -193,28 +193,28 @@ export function App() {
           onAssign={comparison.assign} onSwap={comparison.swap} onRun={() => void startRuns()} onOpenSettings={() => setSettingsOpen(true)} />}
 
         {!single && compareView === "summary" && <CompareSummary range={range} at={instant} panes={{
-          a: { site: chosen.a, run: compareRuns.a, series: compareData.a.series, context: compareData.a.context, insight: compareData.a.insight.insight },
-          b: { site: chosen.b, run: compareRuns.b, series: compareData.b.series, context: compareData.b.context, insight: compareData.b.insight.insight },
+          a: { site: chosen.a, run: compareRuns.a, series: compareData.a.series, context: compareData.a.context, insight: compareData.a.insight.insight, siteMap: compareData.a.siteMap },
+          b: { site: chosen.b, run: compareRuns.b, series: compareData.b.series, context: compareData.b.context, insight: compareData.b.insight.insight, siteMap: compareData.b.siteMap },
         }} />}
 
         {!single && compareView === "live" && <CompareLive at={instant} view={view} range={range} timeIndex={timeIndex} options={options}
           spaceLayers={spaceLayers} onSpaceLayers={setSpaceLayers} layer={mapLayer} onLayerChange={setMapLayer}
           panes={{
-            a: { site: chosen.a, run: compareRuns.a, reading: compareData.a.output.frame?.reading ?? null, sunlight: compareData.a.output.frame?.grid ?? null, insight: compareData.a.insight.insight, context: compareData.a.context },
-            b: { site: chosen.b, run: compareRuns.b, reading: compareData.b.output.frame?.reading ?? null, sunlight: compareData.b.output.frame?.grid ?? null, insight: compareData.b.insight.insight, context: compareData.b.context },
+            a: { site: chosen.a, run: compareRuns.a, reading: compareData.a.output.frame?.reading ?? null, sunlight: compareData.a.output.frame?.grid ?? null, insight: compareData.a.insight.insight, context: compareData.a.context, siteMap: compareData.a.siteMap },
+            b: { site: chosen.b, run: compareRuns.b, reading: compareData.b.output.frame?.reading ?? null, sunlight: compareData.b.output.frame?.grid ?? null, insight: compareData.b.insight.insight, context: compareData.b.context, siteMap: compareData.b.siteMap },
           }} />}
 
         <div className="viewport-stage" hidden={!single}>
           <div className="stage-view" hidden={inSpace}>
             <SouthPoleMap sites={sites} selectedId={catalog.selectedId} draft={usableDraft(draft)} picking={draft !== null}
               onPick={placeDraft} onSelect={catalog.select} cameraTarget={cameraTarget} sunlight={sunlight}
-              slope={selectedData.insight.insight?.slope_grid ?? null} context={selectedData.context} layer={mapLayer} onLayerChange={setMapLayer} />
+              slope={selectedData.insight.insight?.slope_grid ?? null} context={selectedData.context} siteMap={selectedData.siteMap} layer={mapLayer} onLayerChange={setMapLayer} />
           </div>
           <div className="stage-view" hidden={!inSpace}>
             <Suspense fallback={<div className="stage-status" role="status">Opening the 3D view…</div>}>
               <SpaceView active={inSpace && single} sites={sites} selected={selected} focus={cameraTarget} run={selectedRun}
                 layerState={spaceLayers} onLayers={setSpaceLayers}
-                range={range} timeIndex={timeIndex} options={options} sunlight={sunlight} context={selectedData.context} onSelect={catalog.select} />
+                range={range} timeIndex={timeIndex} options={options} sunlight={sunlight} context={selectedData.context} siteMap={selectedData.siteMap} onSelect={catalog.select} />
             </Suspense>
           </div>
         </div>

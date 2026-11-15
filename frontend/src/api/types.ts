@@ -181,6 +181,40 @@ export type TerrainSummary = {
   slope_baseline_m: number;
 };
 
+/** A per-point duration summarised over a site, in hours. */
+export type SiteExtremes = {
+  typical_hours: number;
+  best_hours: number;
+  worst_hours: number;
+  /** More than half the site's area has this duration cut off by the edge of the period. */
+  truncated: boolean;
+};
+
+/**
+ * How every point of a site fared over a whole finished run: its longest day and night and how
+ * much of the time it saw the Sun and Earth. Grids are row-major, north increasing by row.
+ */
+export type SiteMap = {
+  offsets_m: number[];
+  inside_site: boolean[];
+  sunlit_share: (number | null)[];
+  /** Null throughout for results saved before Earth line of sight per point existed. */
+  earth_share: (number | null)[];
+  longest_day_hours: (number | null)[];
+  longest_dark_hours: (number | null)[];
+  period_hours: number;
+  /** A point is a good spot for Sun when lit at least this share of the period; likewise for Earth. */
+  sun_good_share: number;
+  earth_good_share: number;
+  summary: {
+    longest_day: SiteExtremes;
+    longest_dark: SiteExtremes;
+    area_good_for_sun: number;
+    area_good_for_earth: number | null;
+    area_good_for_both: number | null;
+  };
+};
+
 /** NASA's long-term maps over a site, as fractions between 0 and 1, plus site-wide means. */
 export type SiteContext = {
   offsets_m: number[];
