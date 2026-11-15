@@ -1,5 +1,12 @@
 # Web server for the public site. setup.sh replaces DOMAIN with your domain.
-# Caddy gets and renews the HTTPS certificate on its own.
+# Caddy gets and renews the HTTPS certificate on its own, and sends anyone who opens the
+# plain http:// address to https:// automatically (port 80 stays open for that).
+
+# www.DOMAIN goes to DOMAIN, so both addresses reach the same site.
+www.DOMAIN {
+	redir https://DOMAIN{uri} permanent
+}
+
 DOMAIN {
 	encode zstd gzip
 

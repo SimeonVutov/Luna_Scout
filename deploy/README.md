@@ -41,8 +41,9 @@ Delete the default parking records, then add:
 | Type | Host | Value |
 |---|---|---|
 | A Record | `@` | the server's static address |
+| CNAME Record | `www` | `luna-scout.online.` |
 
-DNS can take a few minutes to update. HTTPS will not work until it has.
+The second record makes `www.luna-scout.online` forward to `luna-scout.online`. DNS can take a few minutes to update. HTTPS will not work until it has.
 
 ## 5. Install
 
@@ -55,7 +56,7 @@ sudo ./Luna_Scout/deploy/setup.sh luna-scout.online YOUR_EMAIL
 
 Use your own email for `YOUR_EMAIL`. The script installs what is needed, downloads the NASA data (about 1.7 GB), builds the website, starts the services and sets up HTTPS. It makes its own copy of the code in `/srv/lunascout/app` so that the service account can use it, so you can delete the folder you cloned.
 
-When it finishes, open <https://luna-scout.online>.
+When it finishes, open <https://luna-scout.online>. The site is served over HTTPS with a free certificate that renews itself. Anyone who opens `http://luna-scout.online` or `www.luna-scout.online` is forwarded to `https://luna-scout.online`; keep port 80 open (the **Allow HTTP traffic** box) because that forwarding and the certificate check both use it.
 
 ## 6. Check that it works
 
