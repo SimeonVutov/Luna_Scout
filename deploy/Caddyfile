@@ -1,0 +1,19 @@
+# Web server for the public site. setup.sh replaces DOMAIN with your domain.
+# Caddy gets and renews the HTTPS certificate on its own.
+DOMAIN {
+	encode zstd gzip
+
+	# The API. Progress updates arrive as a stream, so responses must not be held back.
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000 {
+			flush_interval -1
+		}
+	}
+
+	# The website: files from the build, and index.html for anything else.
+	handle {
+		root * /srv/lunascout/app/frontend/dist
+		try_files {path} /index.html
+		file_server
+	}
+}

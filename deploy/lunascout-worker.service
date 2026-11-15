@@ -1,0 +1,15 @@
+[Unit]
+Description=LunaScout simulation worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=lunascout
+WorkingDirectory=/srv/lunascout/app/backend
+EnvironmentFile=/etc/lunascout.env
+ExecStart=/srv/lunascout/app/backend/.venv/bin/lunascout-worker
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

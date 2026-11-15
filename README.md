@@ -114,6 +114,10 @@ Open the URL Vite prints, usually <http://localhost:5173>. The API documentation
 
 To keep NASA data somewhere else, set `LUNASCOUT_DATA_DIR` to the same absolute path in terminals 1 and 2. Use your own address for the Horizons contact; JPL asks automated clients to identify themselves.
 
+## Hosting
+
+To run LunaScout on a server of your own, with HTTPS and protections for public use, follow [deploy/README.md](deploy/README.md).
+
 ## Using the application
 
 1. Choose a reference site, or press **Add site**, switch to the flat map and click where the site should be.
