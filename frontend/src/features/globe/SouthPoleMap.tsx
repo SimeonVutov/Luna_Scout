@@ -56,6 +56,8 @@ type Props = {
   slope: SlopeGrid | null;
   layer: MapLayer;
   onLayerChange: (layer: MapLayer) => void;
+  /** Keep the map on the south-polar view only, with no Whole Moon option. */
+  southOnly?: boolean;
 };
 
 export function SouthPoleMap(props: Props) {
@@ -160,7 +162,7 @@ export function SouthPoleMap(props: Props) {
   useEffect(() => {
     if (!cameraTarget || cameraTarget === lastCameraTarget.current) return;
     if (mode === "south" && cameraTarget.latitude_deg > -60) {
-      setMode("global");
+      if (!props.southOnly) setMode("global");
       return;
     }
     const coordinates = [cameraTarget.longitude_deg, cameraTarget.latitude_deg];
@@ -203,10 +205,10 @@ export function SouthPoleMap(props: Props) {
     {props.picking && <p className="map-instruction">Click the map to place the site center</p>}
     {tileError && <p className="map-note" role="status">Some NASA imagery tiles could not load.</p>}
     <div className="map-navigation" role="group" aria-label="Map coverage">
-      <button type="button" className="button secondary" aria-pressed={mode === "global"} onClick={() => {
+      {!props.southOnly && <button type="button" className="button secondary" aria-pressed={mode === "global"} onClick={() => {
         if (mode === "global") map.current?.getView().fit(globalExtent, { padding: [40, 40, 40, 40], duration: 350 });
         else setMode("global");
-      }}>Whole Moon</button>
+      }}>Whole Moon</button>}
       <button type="button" className="button secondary" aria-pressed={mode === "south"} onClick={() => {
         if (mode === "south") map.current?.getView().animate({ center: [0, 0], resolution: 2300, duration: 350 });
         else setMode("south");

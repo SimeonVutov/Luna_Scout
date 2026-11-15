@@ -73,7 +73,7 @@ function Pane({ slot, data, at, layer, onLayerChange }: {
       </div>
     </header>
     <div className="pane-map">
-      <SouthPoleMap sites={[site]} selectedId={site.id} draft={null} picking={false}
+      <SouthPoleMap southOnly sites={[site]} selectedId={site.id} draft={null} picking={false}
         onPick={() => undefined} onSelect={() => undefined} cameraTarget={cameraTarget}
         sunlight={data.sunlight} slope={data.insight?.slope_grid ?? null} layer={layer} onLayerChange={onLayerChange} />
     </div>
