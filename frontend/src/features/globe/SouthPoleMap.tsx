@@ -72,7 +72,7 @@ export function SouthPoleMap(props: Props) {
     const base = new TileLayer({
       source: mode === "global" ? globalImagery() : polarImagery("LRO_WAC_Mosaic_SPole60_100m_v02", 6),
     });
-    const detail = new TileLayer({ extent: detailExtent, source: polarImagery(detailLayer, 12, detailExtent) });
+    const detail = new TileLayer({ extent: detailExtent, source: polarImagery(detailLayer, 12, detailExtent, true) });
     detail.setMaxResolution(460);
     const view = createView(mode);
     const layers = mode === "south" ? [base, detail] : [base];
