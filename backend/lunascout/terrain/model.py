@@ -176,6 +176,21 @@ class Terrain:
         """
         return mesh.trace_rays_to_hits(origins_m, directions, self._depths, self._geometry)
 
+    def horizon_around(
+        self,
+        origin_m: FloatArray,
+        axes: tuple[FloatArray, FloatArray, FloatArray],
+        azimuth_count: int,
+    ) -> tuple[FloatArray, NDArray[np.bool_]]:
+        """Exact terrain horizon around one viewpoint; see `mesh.horizon_around`.
+
+        `axes` holds the viewpoint's unit east, north and radial-up vectors (3,) each.
+        """
+        east, north, up = axes
+        return mesh.horizon_around(
+            origin_m, east, north, up, azimuth_count, self._depths, self._geometry
+        )
+
     def horizon_profiles(
         self,
         origins_m: FloatArray,

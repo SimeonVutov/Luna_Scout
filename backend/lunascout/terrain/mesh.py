@@ -279,6 +279,31 @@ def horizon_profiles(
     return elevations_rad, complete
 
 
+@njit(parallel=True)
+def horizon_around(
+    origin_m: FloatArray,
+    east: FloatArray,
+    north: FloatArray,
+    up: FloatArray,
+    azimuth_count: int,
+    depths: tuple[FloatArray, ...],
+    geometry: FloatArray,
+) -> tuple[FloatArray, NDArray[np.bool_]]:
+    """Terrain horizon around one viewpoint, parallel over its azimuths.
+
+    Same conventions as `horizon_profiles` for a single receiver: azimuth k is
+    (k + ½)·2π/K clockwise from `north`; elevations are radians above the level plane.
+    """
+    elevations_rad = np.empty(azimuth_count)
+    complete = np.empty(azimuth_count, dtype=np.bool_)
+    for bin_index in prange(azimuth_count):
+        azimuth = 2 * pi * (bin_index + 0.5) / azimuth_count
+        elevations_rad[bin_index], complete[bin_index] = _horizon_elevation(
+            origin_m, east, north, up, azimuth, depths, geometry
+        )
+    return elevations_rad, complete
+
+
 @njit
 def _horizon_elevation(
     origin_m: FloatArray,
