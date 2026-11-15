@@ -1,6 +1,7 @@
 """Offline science and queue contracts preserved by the readability refactor."""
 
 import json
+from time import time_ns
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -173,3 +174,30 @@ def test_saved_shackleton_snapshot_matches_all_grid_arrays():
         for name, actual in vars(snapshot.grid).items():
             if name in saved:  # Fields added after the fixture was archived have no reference.
                 np.testing.assert_allclose(actual, saved[name], rtol=1e-12, atol=1e-10)
+
+
+def test_run_list_and_worker_heartbeat(tmp_path):
+    start = datetime(2026, 11, 14, tzinfo=UTC)
+    plan = RunPlan(
+        site=SiteFootprint(-89.7668, -171.87, 500), settings=SimulationSettings(),
+        start_utc=start, end_utc=start + timedelta(hours=1),
+        snapshot_minutes=60, integration_minutes=15, model_revision=1, sources_sha256={},
+    )
+    queue = RunQueue(tmp_path)
+    queue.initialize()
+    assert not queue.worker_status().running
+
+    queue.submit(plan)
+    runs = queue.list_runs()
+    assert [run.run_id for run in runs] == [plan.identity()]
+    assert runs[0].submitted_utc is not None
+
+    queue.beat(4242)
+    queue.set_activity(plan.identity(), "Computing snapshots")
+    status = queue.worker_status()
+    assert (status.running, status.pid, status.activity) == (True, 4242, "Computing snapshots")
+
+    # A worker that has not reported for longer than the timeout is treated as stopped.
+    assert not queue.worker_status(now_ns=time_ns() + 60_000_000_000).running
+    queue.stop_beating()
+    assert not queue.worker_status().running
