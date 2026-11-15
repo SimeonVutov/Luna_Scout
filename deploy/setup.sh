@@ -83,7 +83,7 @@ chown root:"$APP_USER" /etc/lunascout.env
 
 echo "==> Services"
 cp "$APP/deploy/lunascout-api.service" "$APP/deploy/lunascout-worker.service" /etc/systemd/system/
-sed "s/DOMAIN/$DOMAIN/" "$APP/deploy/Caddyfile" > /etc/caddy/Caddyfile
+sed "s/DOMAIN/$DOMAIN/g" "$APP/deploy/Caddyfile" > /etc/caddy/Caddyfile
 systemctl daemon-reload
 systemctl enable --now lunascout-api lunascout-worker
 systemctl restart lunascout-api lunascout-worker
