@@ -20,10 +20,14 @@ from .frames import (
     site_directions,
 )
 from .radiation import EARTH_MEAN_RADIUS_M, SUN_RADIUS_M, direct_sunlight, disk_directions
+from .slope import grid_slopes
 
 # A millimetre above the geometric surface avoids re-hitting the source triangle.
 _RAY_ORIGIN_OFFSET_M = 0.001
 _MAX_GRID_WIDTH = 1001
+# Steepest ground counted as gentle for landing and siting: the 10° limit used in
+# NASA-supported landing-site assessments (Artemis III region studies).
+LANDING_SLOPE_LIMIT_DEG = 10.0
 # Earth spans about 1.9° from the Moon; 37 equal-solid-angle rays resolve partial views.
 EARTH_DISK_SAMPLES = 37
 
@@ -114,6 +118,7 @@ class SnapshotGrid:
     inside_site: NDArray[np.bool_]
     dem_spacing_m: FloatArray
     height_m: FloatArray
+    slope_deg: FloatArray
     visible_sun_fraction_lower: FloatArray
     visible_sun_fraction_upper: FloatArray
     irradiance_lower_w_m2: FloatArray
@@ -132,6 +137,8 @@ class SnapshotSummary:
     # Stricter threshold: at least half the solar disk visible. None in runs
     # saved before model revision 2.
     half_disk_lit_area_fraction: Bounds | None = None
+    # Lit (at least half the Sun visible) on ground no steeper than LANDING_SLOPE_LIMIT_DEG.
+    usable_area_fraction: Bounds | None = None
 
 
 @dataclass(frozen=True)
@@ -164,6 +171,7 @@ class PreparedSite:
     weights: FloatArray
     heights_m: FloatArray
     dem_spacing_m: FloatArray
+    slope_deg: FloatArray
     solar_origins_m: FloatArray
     receiver_up: FloatArray
     collector_normals: FloatArray
@@ -242,6 +250,7 @@ def prepare_site(
         weights=weights,
         heights_m=heights,
         dem_spacing_m=spacing,
+        slope_deg=grid_slopes(site, terrain, offsets, inside),
         solar_origins_m=np.asarray(origins),
         receiver_up=np.asarray(ups),
         collector_normals=np.asarray(normals),
@@ -299,6 +308,7 @@ def trace_snapshot(
         inside_site=prepared.inside,
         dem_spacing_m=prepared.dem_spacing_m,
         height_m=prepared.heights_m,
+        slope_deg=prepared.slope_deg,
         visible_sun_fraction_lower=visible_lower,
         visible_sun_fraction_upper=visible_upper,
         irradiance_lower_w_m2=flux_lower,
@@ -442,6 +452,19 @@ def _summarize(grid: SnapshotGrid, weights: FloatArray) -> SnapshotSummary:
         float(weights[half_lit_upper].sum() / total_weight),
     )
 
+    # Usable-area bounds: U₋ = Σᵢ∈B wᵢ/W; U₊ = Σᵢ∈P wᵢ/W
+    #   U₋, U₊ (usable_area) - Dimensionless footprint fraction that is both lit and gentle.
+    #   B - Points with a known slope ≤ the limit and at least half the Sun definitely visible.
+    #   P - Points that could qualify: slope unknown or ≤ the limit, and ≥ ½ Sun possibly visible.
+    #   wᵢ (weights), W (total_weight) - Sample weights and total reporting weight.
+    slope = grid.slope_deg[inside]
+    gentle = slope <= LANDING_SLOPE_LIMIT_DEG
+    gentle_or_unknown = gentle | np.isnan(slope)
+    usable_area = Bounds(
+        float(weights[half_lit_lower & gentle].sum() / total_weight),
+        float(weights[half_lit_upper & gentle_or_unknown].sum() / total_weight),
+    )
+
     # Footprint mean disk visibility: f̄ = Σᵢ(wᵢ fᵢ)/Σᵢwᵢ
     #   f̄ (mean_visibility) - Dimensionless mean solar-disk visibility bounds.
     #   fᵢ (disk_lower/upper) - Dimensionless per-point visibility bound.
@@ -463,6 +486,7 @@ def _summarize(grid: SnapshotGrid, weights: FloatArray) -> SnapshotSummary:
         mean_visible_sun_fraction=mean_visibility,
         mean_irradiance_on_known_ground_w_m2=mean_flux,
         half_disk_lit_area_fraction=half_disk_lit_area,
+        usable_area_fraction=usable_area,
     )
 
 
