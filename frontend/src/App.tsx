@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { SouthPoleMap } from "./features/globe/SouthPoleMap";
 import type { MapLayer } from "./features/globe/SouthPoleMap";
+import { releaseSiteData } from "./api/client";
 import type { Coordinate, RunStatus, Site, SiteSpec, TimeRange } from "./api/types";
 import { Icon } from "./Icon";
 import { defaultOptions, isActive, useRunOutput, useRunSeries, useScience } from "./features/results/useScience";
@@ -10,7 +11,7 @@ import { useActivity } from "./features/activity/useActivity";
 import { ResultsPanel } from "./features/results/ResultsPanel";
 import { siteCatalog, usesApiCatalog } from "./features/sites/siteCatalog";
 import { SitePanel } from "./features/sites/SitePanel";
-import { maximumSiteRadius } from "./features/sites/referenceSites";
+import { maximumSiteRadius, referenceSites } from "./features/sites/referenceSites";
 import { SettingsDrawer } from "./features/settings/SettingsDrawer";
 import { Timeline } from "./features/timeline/Timeline";
 import type { ReadyTrack } from "./features/timeline/Timeline";
@@ -198,6 +199,11 @@ export function App() {
     setError(null);
     try {
       await siteCatalog.remove(site.id);
+      // A reference site keeps its results, so it is instant to bring back; a site you created
+      // yourself has its results removed to save space. Failing to free space is not an error.
+      const isReference = referenceSites.some((reference) =>
+        reference.latitude_deg === site.latitude_deg && reference.longitude_deg === site.longitude_deg);
+      void releaseSiteData(site, isReference).then(() => activity.refresh()).catch(() => undefined);
       const remaining = sites.filter((saved) => saved.id !== site.id);
       setSites(remaining);
       setSelectedId((id) => id === site.id ? remaining[0]?.id ?? null : id);
@@ -210,9 +216,23 @@ export function App() {
     }
   }
 
+  /**
+   * One timeline for every site: changing it starts, for all saved sites, whatever the new
+   * range is missing. Earlier results stay stored when the range shrinks.
+   */
   function changeRange(next: TimeRange) {
     setTimeIndex(0);
     setRange(next);
+    const supported = sites.filter((site) => site.latitude_deg <= -60);
+    if (!supported.length) return;
+
+    const first = snapshotAt(next, 0).toISOString();
+    void Promise.allSettled(supported.map((site) => science.run(site, next, first))).then((results) => {
+      const problems = results.flatMap((result, index) =>
+        result.status === "rejected" ? [`${supported[index].name} · ${errorText(result.reason)}`] : []);
+      setError(problems.length ? problems.join(" ") : null);
+      void activity.refresh();
+    });
   }
 
   const tracks: ReadyTrack[] | undefined = exploring

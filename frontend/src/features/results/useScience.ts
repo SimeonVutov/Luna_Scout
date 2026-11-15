@@ -94,11 +94,15 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [activeKey, atUtc]);
 
-  async function run(site: Site) {
-    const key = requestKey(site, range, options);
+  /**
+   * Start a simulation. Samples already computed for the same site and settings are reused by
+   * the server, so a longer or shorter timeline only computes what is missing.
+   */
+  async function run(site: Site, target: TimeRange = range, priorityAt: string = atUtc) {
+    const key = requestKey(site, target, options);
     setPending((current) => ({ ...current, [key]: true }));
     try {
-      const status = await submitRun({ ...range, ...options, site, priority_utc: atUtc });
+      const status = await submitRun({ ...target, ...options, site, priority_utc: priorityAt });
       accept(status);
       setIds((current) => ({ ...current, [key]: status.run_id }));
     } finally {

@@ -83,3 +83,15 @@ export function siteInsight(
 export function listRuns(signal: AbortSignal) {
   return send<RunList>("/runs?limit=30", "GET", undefined, signal);
 }
+
+/**
+ * Free the stored results of a deleted site. With `keep`, they are retained (hidden) so the
+ * site can be restored later; without it, everything is removed to save space.
+ */
+export function releaseSiteData(site: SiteSpec, keep: boolean) {
+  const query = new URLSearchParams({
+    latitude_deg: String(site.latitude_deg), longitude_deg: String(site.longitude_deg),
+    radius_m: String(site.radius_m), keep: String(keep),
+  });
+  return send<{ runs_removed: number; runs_kept: number; horizon_maps_removed: number }>(`/runs/site?${query}`, "DELETE");
+}
