@@ -8,6 +8,8 @@ User=lunascout
 WorkingDirectory=/srv/lunascout/app/backend
 EnvironmentFile=/etc/lunascout.env
 ExecStart=/srv/lunascout/app/backend/.venv/bin/lunascout-worker
+# Simulations use every core. A lower priority keeps the API and the website responsive meanwhile.
+Nice=10
 Restart=always
 RestartSec=3
 
