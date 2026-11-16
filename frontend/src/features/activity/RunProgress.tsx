@@ -17,6 +17,10 @@ export function RunProgress({ run, phase, workerRunning }: {
   if (run.stage === "complete") {
     return <p className="run-state done"><Icon name="check" size={13} /> Simulation done</p>;
   }
+  if (run.stage === "paused") {
+    const done = run.total_samples ? run.completed_samples / run.total_samples : 0;
+    return <p className="run-state">Paused at {wholePercent.format(done)}</p>;
+  }
   if (run.stage === "failed") {
     return <p className="run-state failed" role="alert">{run.message ?? "The simulation failed."}</p>;
   }

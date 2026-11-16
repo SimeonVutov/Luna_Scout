@@ -24,6 +24,7 @@ const receiverShort = { vertical_tracking: "Vertical panel", terrain: "Ground", 
 function progress(run: RunStatus | null) {
   if (!run) return null;
   if (run.stage === "failed") return { text: "Failed. Run again to resume.", value: null };
+  if (run.stage === "paused") return { text: "Paused. Run both to resume.", value: run.completed_samples / Math.max(1, run.total_samples) };
   if (run.stage === "complete") return { text: "Complete", value: 1 };
   if (isActive(run)) {
     const text = run.stage === "queued" ? "Queued for worker" : `${run.ready_indices.length} of ${run.total_frames} snapshots ready`;

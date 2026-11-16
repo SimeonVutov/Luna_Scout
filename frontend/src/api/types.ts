@@ -28,6 +28,16 @@ export type SimulationOptions = {
 export type RunRequest = TimeRange & SimulationOptions & {
   site: SiteSpec;
   priority_utc: string;
+  /** The browser's own ID, so a public server knows who may pause or cancel the run. */
+  session?: string;
+};
+
+/** What the server already has for a request, without starting anything. */
+export type RunLookup = {
+  run: RunStatus | null;
+  /** Samples that earlier runs of the same site and settings computed for this range. */
+  reusable_samples: number;
+  total_samples: number;
 };
 
 export type Bounds = { lower: number; upper: number };
@@ -92,7 +102,7 @@ export type PeriodSummary = PeriodMetrics & {
 
 export type RunStatus = {
   run_id: string;
-  stage: "queued" | "running" | "complete" | "failed";
+  stage: "queued" | "running" | "paused" | "complete" | "failed";
   revision: number;
   plan: TimeRange & {
     integration_minutes: number;

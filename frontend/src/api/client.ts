@@ -1,4 +1,5 @@
-import type { FramePayload, Reading, RunList, RunRequest, RunStatus, RunRays, SimulationOptions, Site, SiteContext, SiteIce, SiteMap, SiteInsight, SiteRays, SiteSpec, SkyBatch, TimeRange } from "./types";
+import type { FramePayload, Reading, RunList, RunLookup, RunRequest, RunStatus, RunRays, SimulationOptions, Site, SiteContext, SiteIce, SiteMap, SiteInsight, SiteRays, SiteSpec, SkyBatch, TimeRange } from "./types";
+import { browserSession } from "./session";
 
 /** A failed API call. `status` is null when the server could not be reached at all. */
 export class ApiError extends Error {
@@ -44,7 +45,26 @@ export function removeSite(id: string) {
 }
 
 export function submitRun(request: RunRequest) {
-  return send<RunStatus>("/runs", "POST", request);
+  return send<RunStatus>("/runs", "POST", { ...request, session: browserSession() });
+}
+
+/** The run for this request if it exists, and how much earlier runs already computed. Starts nothing. */
+export function lookupRun(request: RunRequest, signal: AbortSignal) {
+  return send<RunLookup>("/runs/lookup", "POST", request, signal);
+}
+
+/** Stop computing a run, keeping what is done. */
+export function pauseRun(id: string) {
+  return send<RunStatus>(`/runs/${id}/pause?session=${browserSession()}`, "POST");
+}
+
+export function resumeRun(id: string) {
+  return send<RunStatus>(`/runs/${id}/resume`, "POST");
+}
+
+/** Stop a run and delete what it computed. */
+export function cancelRun(id: string) {
+  return send<void>(`/runs/${id}?session=${browserSession()}`, "DELETE");
 }
 
 export function runStatus(id: string, signal?: AbortSignal) {

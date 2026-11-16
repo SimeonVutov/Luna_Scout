@@ -21,7 +21,7 @@ function description(run: RunStatus) {
   return [rangeLabel(run.plan.start_utc, run.plan.end_utc), receiver].filter(Boolean).join(" · ");
 }
 
-const stageLabel = { queued: "Queued", running: "Running", complete: "Done", failed: "Failed" } as const;
+const stageLabel = { queued: "Queued", running: "Running", paused: "Paused", complete: "Done", failed: "Failed" } as const;
 
 export function ActivityMenu({ list, problem, sites, onOpen }: { list: RunList | null; problem: ApiProblem; sites: Site[]; onOpen: () => void }) {
   const [open, setOpen] = useState(false);
