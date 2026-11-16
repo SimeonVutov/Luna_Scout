@@ -12,6 +12,7 @@ This folder holds the NASA inputs, the caches and the simulation outputs. `uv ru
 | `raw/terrain/*_final_adj_5mpp_surf.tif` | 5 m LOLA for 10 candidate sites (below) | NASA Goddard PGDA |
 | `cache/horizons/` | Terrain horizon maps, one file per site centre. Each point's horizon is built once and shared by every site radius at that centre | computed |
 | `runs/` | Run queue (`queue.sqlite3`) and per-timestamp result grids | computed |
+| `cache/performance.json` | How long each stage of a simulation took on this server, per CPU count, from the last 40 runs of each kind. Used to estimate time left | computed |
 | `logs/ephemeris-check.log` | One line per `check-ephemeris` run: the largest SPICE–Horizons difference | computed |
 
 The 5 m sites are Connecting Ridge (`Site01`), Shackleton Rim (`Site04`), Nobile Rim 1 (`Site06`), Peak near Shackleton (`Site07`), de Gerlache Rim (`Site11`), Leibnitz Beta Plateau (`Site20`), Malapert Massif (`Site23`), Haworth, Shoemaker, and Nobile Rim 2 (`DM2`).
@@ -86,7 +87,7 @@ Maps are cached in `cache/horizons/`. The cache key covers the terrain checksums
 | `POST /api/runs/{id}/resume?session=` | Wants the run again and continues it from where it stopped. |
 | `DELETE /api/runs/{id}?session=` | Withdraws this session's request. Deletes nothing: when no session is left the run stops and is hidden, its samples stay for reuse, and it is removed after 14 days if nobody asks for it. |
 | `GET /api/precomputed` | For each NASA reference site, the newest precomputed date range with the website's default settings, and whether it is complete. |
-| `GET /api/runs/{id}` | Progress, ready snapshots and the period summary |
+| `GET /api/runs/{id}` | Progress, ready snapshots and the period summary. While waiting, running or paused, `progress` lists the stages (preparing, horizons, snapshots, windows) with each one's state, estimated seconds and share done, and the seconds left, including time shared with other visitors' runs |
 | `GET /api/runs/events?run_id=…` | Live progress (server-sent events) |
 | `GET /api/runs/{id}/snapshots/{index}` | One hour's metrics, sunlight grid and Earth line-of-sight grid (fraction of Earth's disk seen from mast height per point; absent before model revision 5) |
 | `GET /api/runs/{id}/series` | Sun and Earth angles and metrics per published hour |
