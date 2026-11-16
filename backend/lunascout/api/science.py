@@ -55,41 +55,44 @@ class FramePayload(BaseModel):
     grid: GridPayload
 
 
+def plan_for_request(data_dir: Path, spec: RunSpec) -> RunPlan:
+    """The run plan for a request, exactly as the website's requests become plans."""
+    site = site_store.get_site(data_dir, spec.site_id) if spec.site_id is not None else spec.site
+    if site is None:
+        raise HTTPException(404, "Site not found")
+
+    try:
+        settings = SimulationSettings(
+            grid_spacing_m=spec.grid_spacing_m,
+            solar_disk_samples=spec.solar_disk_samples,
+            mast_height_m=spec.mast_height_m,
+            collector_height_m=spec.collector_height_m,
+            receiver=spec.receiver,
+            collector_tilt_deg=spec.collector_tilt_deg,
+            collector_azimuth_deg=spec.collector_azimuth_deg,
+            ray_method=spec.ray_method,
+        )
+        return create_plan(
+            data_dir,
+            site=SiteFootprint(site.latitude_deg, site.longitude_deg, site.radius_m),
+            settings=settings,
+            start_utc=spec.start_utc,
+            end_utc=spec.end_utc,
+            snapshot_minutes=spec.snapshot_minutes,
+            integration_minutes=spec.integration_minutes,
+        )
+    except MissingScienceInputs as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 def science_router(data_dir: Path, queue: RunQueue, public: PublicMode = PublicMode()) -> APIRouter:
     router = APIRouter(prefix="/api")
     insights = InsightService(data_dir)
 
     def plan_for(spec: RunSpec) -> RunPlan:
-        site = (
-            site_store.get_site(data_dir, spec.site_id) if spec.site_id is not None else spec.site
-        )
-        if site is None:
-            raise HTTPException(404, "Site not found")
-
-        try:
-            settings = SimulationSettings(
-                grid_spacing_m=spec.grid_spacing_m,
-                solar_disk_samples=spec.solar_disk_samples,
-                mast_height_m=spec.mast_height_m,
-                collector_height_m=spec.collector_height_m,
-                receiver=spec.receiver,
-                collector_tilt_deg=spec.collector_tilt_deg,
-                collector_azimuth_deg=spec.collector_azimuth_deg,
-                ray_method=spec.ray_method,
-            )
-            return create_plan(
-                data_dir,
-                site=SiteFootprint(site.latitude_deg, site.longitude_deg, site.radius_m),
-                settings=settings,
-                start_utc=spec.start_utc,
-                end_utc=spec.end_utc,
-                snapshot_minutes=spec.snapshot_minutes,
-                integration_minutes=spec.integration_minutes,
-            )
-        except MissingScienceInputs as exc:
-            raise HTTPException(503, str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(422, str(exc)) from exc
+        return plan_for_request(data_dir, spec)
 
     @router.post("/runs", status_code=202)
     def request_run(spec: RunSpec) -> RunStatus:

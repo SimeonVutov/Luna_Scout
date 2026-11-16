@@ -7,7 +7,7 @@ import os
 import shutil
 import sys
 from dataclasses import asdict
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.error import URLError
@@ -47,6 +47,8 @@ def main() -> None:
     try:
         if arguments.command == "fetch-data":
             _fetch_data(arguments.data_dir)
+        elif arguments.command == "precompute":
+            _precompute(arguments)
         elif arguments.command == "check-ephemeris":
             if not _check_ephemeris(arguments):
                 sys.exit(1)
@@ -76,6 +78,17 @@ def _argument_parser() -> argparse.ArgumentParser:
         "--at", type=_timestamp, action="append", required=True, help="UTC epoch"
     )
     _correction_option(ephemeris)
+
+    precompute = commands.add_parser(
+        "precompute",
+        help="Queue NASA's reference sites as background work, so visitors find them ready.",
+    )
+    precompute.add_argument(
+        "--from", dest="first_day", type=date.fromisoformat, help="First UTC day (default: first of this month)"
+    )
+    precompute.add_argument(
+        "--through", dest="last_day", type=date.fromisoformat, help="Last UTC day (default: end of next month)"
+    )
 
     check = commands.add_parser(
         "check-ephemeris",
@@ -232,6 +245,38 @@ def _ephemeris_source(series: Ephemerides) -> dict[str, object]:
         "correction": series.correction,
         "kernels_sha256": series.kernels_sha256,
     }
+
+
+def _precompute(arguments: argparse.Namespace) -> None:
+    """Queue the reference sites; the worker computes them whenever no visitor is waiting."""
+    # Imported here: the API modules are only needed by this command.
+    from .api.precompute import precompute_reference_sites
+    from .jobs.scheduler import RunQueue
+
+    today = datetime.now(UTC).date()
+    # Starting on the first of the month means each weekly run covers the previous one, which is
+    # then deleted; only one older run per site remains when a month ends.
+    first_day = arguments.first_day or today.replace(day=1)
+    last_day = arguments.last_day or _end_of_next_month(today)
+    if last_day < first_day:
+        raise ValueError("--through must not be before --from.")
+
+    queue = RunQueue(arguments.data_dir)
+    queue.initialize()
+    print(f"Precomputing {first_day} to {last_day}:")
+    for line in precompute_reference_sites(arguments.data_dir, queue, first_day, last_day):
+        print(f"  {line}")
+
+
+def _end_of_next_month(day: date) -> date:
+    """The last day of the month after `day`'s month: the day before the first of the month after that."""
+    return _first_of_following_month(_first_of_following_month(day)) - timedelta(days=1)
+
+
+def _first_of_following_month(day: date) -> date:
+    if day.month == 12:
+        return date(day.year + 1, 1, 1)
+    return date(day.year, day.month + 1, 1)
 
 
 def _check_ephemeris(arguments: argparse.Namespace) -> bool:
