@@ -42,7 +42,7 @@ function SiteForm({ site, onChange, onSave, onCancel, busy }: {
   </form>;
 }
 
-export function SitePanel({ sites, selectedId, draft, busy, runs, phases, workerRunning, onAdd, onDraft, onSave, onSelect, onFly, onDelete, onEdit }: {
+export function SitePanel({ sites, selectedId, draft, busy, runs, phases, workerRunning, readyLabel, onAdd, onDraft, onSave, onSelect, onFly, onDelete, onEdit }: {
   sites: Site[];
   selectedId: string | null;
   draft: SiteSpec | null;
@@ -52,6 +52,8 @@ export function SitePanel({ sites, selectedId, draft, busy, runs, phases, worker
   /** What the worker is doing for a run, by run id. */
   phases: Record<string, string | null>;
   workerRunning: boolean | null;
+  /** "Ready to 31 Dec" when the server has precomputed a reference site; null otherwise. */
+  readyLabel: (site: SiteSpec) => string | null;
   onAdd: () => void;
   onDraft: (site: SiteSpec | null) => void;
   onSave: (site: SiteSpec) => void;
@@ -122,12 +124,16 @@ export function SitePanel({ sites, selectedId, draft, busy, runs, phases, worker
           <h3>{group.title}</h3>
           {group.sites.map((site) => {
             const existing = sites.find((saved) => saved.latitude_deg === site.latitude_deg && saved.longitude_deg === site.longitude_deg);
+            const ready = existing ? null : readyLabel(site);
             return <button key={site.name} className="reference-button" type="button" disabled={busy} onClick={() => {
               if (existing) {
                 onSelect(existing.id);
                 onFly(existing);
               } else onSave(site);
-            }}><span>{site.name}</span><Icon name={existing ? "arrow" : "plus"} size={15} /></button>;
+            }}>
+              <span>{site.name}{ready && <small className="ready-label">{ready}</small>}</span>
+              <Icon name={existing ? "arrow" : "plus"} size={15} />
+            </button>;
           })}
         </div>)}
       </details>}

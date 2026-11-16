@@ -18,6 +18,7 @@ import { SettingsDrawer } from "./features/settings/SettingsDrawer";
 import { maximumSiteRadius, referenceSites } from "./features/sites/referenceSites";
 import { SitePanel } from "./features/sites/SitePanel";
 import { useSiteCatalog } from "./features/sites/useSiteCatalog";
+import { readyLabel, usePrecomputed } from "./features/sites/usePrecomputed";
 import { defaultSpaceLayers } from "./features/space/layers";
 import { Timeline } from "./features/timeline/Timeline";
 import type { ReadyTrack } from "./features/timeline/Timeline";
@@ -74,6 +75,7 @@ export function App() {
   const instant = snapshotAt(range, timeIndex);
   const science = useScience(sites, range, options, instant.toISOString());
   const activity = useActivity();
+  const precomputed = usePrecomputed();
   const single = mode === "single";
   const inSpace = view === "3d";
 
@@ -201,6 +203,7 @@ export function App() {
         {single ? <SitePanel
           sites={sites} selectedId={catalog.selectedId} draft={draft} busy={catalog.busy || catalog.state !== "ready"}
           runs={siteRuns} phases={phases} workerRunning={activity.list ? activity.list.worker.running : null}
+          readyLabel={(site) => readyLabel(precomputed, site, options)}
           onAdd={startAddingSite} onDraft={setDraft} onSave={(site) => void saveSite(site)} onSelect={catalog.select}
           onFly={(site) => setCameraTarget({ ...site })} onDelete={deleteSite} onEdit={catalog.edit}
         /> : <ComparePicker sites={sites} chosen={chosen} runs={compareRuns} options={options}

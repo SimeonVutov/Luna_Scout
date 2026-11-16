@@ -190,6 +190,13 @@
   color: var(--accent);
 }
 
+.ready-label {
+  display: block;
+  margin-top: 1px;
+  font-size: .64rem;
+  color: var(--accent);
+}
+
 .reference-button svg {
   flex: 0 0 auto;
   color: var(--muted);

@@ -1,4 +1,4 @@
-import type { FramePayload, Reading, RunList, RunLookup, RunRequest, RunStatus, RunRays, SimulationOptions, Site, SiteContext, SiteIce, SiteMap, SiteInsight, SiteRays, SiteSpec, SkyBatch, TimeRange } from "./types";
+import type { Coverage, FramePayload, Reading, RunList, RunLookup, RunRequest, RunStatus, RunRays, SimulationOptions, Site, SiteContext, SiteIce, SiteMap, SiteInsight, SiteRays, SiteSpec, SkyBatch, TimeRange } from "./types";
 import { browserSession } from "./session";
 
 /** A failed API call. `status` is null when the server could not be reached at all. */
@@ -136,6 +136,11 @@ export function siteContext(site: SiteSpec, gridSpacingM: number, signal: AbortS
 /** Diviner's modelled temperatures and ice-stability depth for the cells inside a site. */
 export function siteIce(site: SiteSpec, signal: AbortSignal) {
   return send<SiteIce>("/terrain/ice", "POST", site, signal);
+}
+
+/** How far NASA's reference sites are precomputed with the default settings. */
+export function precomputedCoverage(signal: AbortSignal) {
+  return send<Coverage[]>("/precomputed", "GET", undefined, signal);
 }
 
 export function listRuns(signal: AbortSignal) {

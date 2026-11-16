@@ -32,6 +32,17 @@ export type RunRequest = TimeRange & SimulationOptions & {
   session?: string;
 };
 
+/** The dates the server precomputed for a reference site, with the default settings. */
+export type Coverage = {
+  latitude_deg: number;
+  longitude_deg: number;
+  radius_m: number;
+  start_utc: string;
+  /** Start of the day after the last day covered. */
+  end_utc: string;
+  complete: boolean;
+};
+
 /** What the server already has for a request, without starting anything. */
 export type RunLookup = {
   run: RunStatus | null;
