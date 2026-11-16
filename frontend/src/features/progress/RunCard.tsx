@@ -3,7 +3,7 @@ import { RunControls } from "../results/RunControls";
 import { slotColor, slotLabel } from "../compare/slots";
 import type { Slot } from "../compare/slots";
 import { Icon } from "../../Icon";
-import { basisNote, stageLabel, timeLeft } from "./progressModel";
+import { stageLabel, timeLeft } from "./progressModel";
 import { StageBar } from "./StageBar";
 import { StageList } from "./StageList";
 import { useLiveProgress } from "./useLiveProgress";
@@ -42,8 +42,8 @@ export function RunCard({ site, slot, run, pausedForYou, onPause, onResume, onCa
 
     {live && <StageBar segments={live.segments} overall={live.overall} paused={paused}
       description={active ? `${stageLabel[active.key]}, ${status.text}` : status.text} />}
-    <p className={`run-card-status ${status.tone}`} role="status">{status.text}</p>
-    {run?.progress && !complete && <p className="run-card-note">{notes(run).join(" · ")}</p>}
+    {!complete && <p className={`run-card-status ${status.tone}`} role="status">{status.text}</p>}
+    {sharing(run) && <p className="run-card-note">{sharing(run)}</p>}
     {run?.stage === "failed" && run.message && <p className="run-card-note error-text" role="alert">{run.message}</p>}
 
     {live && !complete && live.stages.length > 0 && <StageList stages={live.stages} paused={paused} />}
@@ -54,22 +54,19 @@ export function RunCard({ site, slot, run, pausedForYou, onPause, onResume, onCa
 type Tone = "normal" | "waiting" | "done" | "stopped";
 
 function statusLine(run: RunStatus | null, remainingS: number): { text: string; tone: Tone } {
-  if (!run) return { text: "Stopped. Nothing computed is lost.", tone: "stopped" };
-  if (run.stage === "complete") return { text: "All results are ready.", tone: "done" };
-  if (run.stage === "failed") return { text: "The simulation stopped with an error.", tone: "stopped" };
-  if (run.stage === "paused") return { text: "Paused. Resume to continue where it stopped.", tone: "waiting" };
+  if (!run) return { text: "Stopped", tone: "stopped" };
+  if (run.stage === "complete") return { text: "Ready", tone: "done" };
+  if (run.stage === "failed") return { text: "Stopped with an error", tone: "stopped" };
+  if (run.stage === "paused") return { text: "Paused", tone: "waiting" };
   if (run.progress?.waiting) return { text: `Waiting for the server · ${timeLeft(remainingS)} left`, tone: "waiting" };
   return { text: `${capitalise(timeLeft(remainingS))} left`, tone: "normal" };
 }
 
-function notes(run: RunStatus) {
-  const progress = run.progress;
-  if (!progress) return [];
-
-  const shared = progress.sharing_with
-    ? [`Sharing the server with ${progress.sharing_with} other simulation${progress.sharing_with === 1 ? "" : "s"}`]
-    : [];
-  return [...shared, basisNote[progress.basis]];
+/** Why the time left is longer than this run alone needs, or null. */
+function sharing(run: RunStatus | null) {
+  const others = run?.progress?.sharing_with ?? 0;
+  if (!others || run?.stage === "complete") return null;
+  return `Sharing the server with ${others} other simulation${others === 1 ? "" : "s"}`;
 }
 
 /** Whole percent, never 100 before the run is complete, so "100%" always means done. */

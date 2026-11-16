@@ -81,11 +81,11 @@ export function timeLeft(seconds: number) {
 
 const number = new Intl.NumberFormat("en-GB");
 
-/** What a stage is doing, in a few words. */
+/** How far a stage is in its own units, or null where there is nothing to count. */
 export function stageDetail(stage: StageProgress) {
   if (stage.key === "horizons") {
     if (stage.state === "skipped") return "Already built for this site";
-    if (!stage.total_units) return "Every direction from every grid point, built once per site";
+    if (!stage.total_units) return null;
     return `${number.format(stage.done_units ?? 0)} of ${number.format(stage.total_units)} points`;
   }
   if (stage.key === "snapshots") {
@@ -93,12 +93,5 @@ export function stageDetail(stage: StageProgress) {
     if (stage.state === "skipped") return "Every sample was already computed";
     return `${number.format(stage.done_units ?? 0)} of ${number.format(stage.total_units ?? 0)} samples${reused}`;
   }
-  if (stage.key === "preparing") return "LOLA elevation around the site, then the first hour";
-  return "Exact to about a second at the site centre";
+  return null;
 }
-
-export const basisNote: Record<RunProgress["basis"], string> = {
-  measured: "Timed on this server",
-  scaled: "Estimated from this server's runs at another size",
-  typical: "Rough estimate until this server has timed a run",
-};

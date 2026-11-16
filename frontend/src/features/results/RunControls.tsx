@@ -34,7 +34,7 @@ export function RunControls({ run, pausedForYou, onPause, onResume, onCancel, sh
 
   if (pausedForYou && !paused) {
     return <div className="run-controls" role="group" aria-label="Simulation controls">
-      <span>Paused for you. Another visitor still needs this simulation, so it keeps running.</span>
+      <span>Paused for you. It keeps running for another visitor.</span>
       <button className="button quiet" type="button" onClick={onResume}>Resume</button>
       {cancel}
       {progress}
@@ -42,7 +42,7 @@ export function RunControls({ run, pausedForYou, onPause, onResume, onCancel, sh
   }
 
   return <div className="run-controls" role="group" aria-label="Simulation controls">
-    {paused && showPausedNote && <span>Paused at {wholePercent.format(done)}. Results so far stay available.</span>}
+    {paused && showPausedNote && <span>Paused at {wholePercent.format(done)}</span>}
     {paused && showResume && <button className="button quiet" type="button" onClick={onResume}>Resume</button>}
     {!paused && <button className="button quiet" type="button" onClick={onPause}>Pause</button>}
     {cancel}

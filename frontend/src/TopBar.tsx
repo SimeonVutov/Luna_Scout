@@ -2,7 +2,6 @@ import type { Site } from "./api/types";
 import { ActivityMenu } from "./features/activity/ActivityMenu";
 import type { useActivity } from "./features/activity/useActivity";
 import type { CatalogState } from "./features/sites/useSiteCatalog";
-import { usesApiCatalog } from "./features/sites/siteCatalog";
 import { Icon } from "./Icon";
 import { Logo } from "./Logo";
 
@@ -58,7 +57,6 @@ export function TopBar(props: TopBarProps) {
 
     <div className="topbar-end">
       <div className="connection" role="status">
-        {catalogState === "ready" && (usesApiCatalog ? "Saved on server" : "Sites saved in this browser")}
         {catalogState === "loading" && "Loading saved sites…"}
         {catalogState === "error" && <button className="button quiet" type="button" onClick={props.onRetryCatalog}>Retry loading sites</button>}
       </div>

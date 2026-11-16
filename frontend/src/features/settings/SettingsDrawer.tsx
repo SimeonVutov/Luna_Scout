@@ -60,7 +60,7 @@ export function SettingsDrawer({ options, onApply, onClose }: {
   return <div className="drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <aside className="drawer" role="dialog" aria-modal="true" aria-label="Simulation settings">
       <header className="drawer-head">
-        <div><h2>Simulation settings</h2><p>Shared by every site, so comparisons stay fair.</p></div>
+        <h2>Simulation settings</h2>
         <button ref={first} type="button" className="icon-button" aria-label="Close settings" onClick={onClose}><Icon name="close" size={17} /></button>
       </header>
 
@@ -102,7 +102,6 @@ export function SettingsDrawer({ options, onApply, onClose }: {
         </section>
 
         <footer className="drawer-foot">
-          <p>Changed settings start new runs. Identical ones are reused.</p>
           <div className="form-actions">
             <button type="button" className="button quiet" onClick={onClose}>Cancel</button>
             <button type="submit" className="button primary" disabled={!changed}>Apply settings</button>

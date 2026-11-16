@@ -45,10 +45,7 @@ export function RunDialog({ entries, onHide, onPause, onResume, onCancel }: Dial
 
   return <div className={allReady ? "run-dialog ready" : "run-dialog"} role="dialog" aria-modal="false" aria-labelledby="run-dialog-title">
     <div className="run-dialog-head">
-      <div className="run-dialog-title">
-        <h2 id="run-dialog-title" ref={heading} tabIndex={-1}>{title}</h2>
-        {!allReady && <p>Keeps running in the background when hidden.</p>}
-      </div>
+      <h2 id="run-dialog-title" ref={heading} tabIndex={-1}>{title}</h2>
       <button className="button secondary run-dialog-hide" type="button" onClick={onHide}>
         {allReady ? <>Close <Icon name="close" size={14} /></> : <>Hide <Icon name="chevron" size={15} /></>}
       </button>

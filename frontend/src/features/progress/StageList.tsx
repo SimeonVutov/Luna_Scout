@@ -6,14 +6,17 @@ import "./stageBar.css";
 /** The run's stages in order: done, in progress, still to come, or not needed. */
 export function StageList({ stages, paused }: { stages: StageProgress[]; paused: boolean }) {
   return <ol className="stage-list">
-    {stages.map((stage) => <li key={stage.key} className={`stage-row ${stage.state}`}>
-      <StageIcon state={stage.state} paused={paused} />
-      <span className="stage-text">
-        <strong>{stageLabel[stage.key]}</strong>
-        <small>{stageDetail(stage)}</small>
-      </span>
-      {stage.state === "active" && <span className="stage-percent">{Math.round(stage.fraction * 100)}%</span>}
-    </li>)}
+    {stages.map((stage) => {
+      const detail = stageDetail(stage);
+      return <li key={stage.key} className={`stage-row ${stage.state}`}>
+        <StageIcon state={stage.state} paused={paused} />
+        <span className="stage-text">
+          <strong>{stageLabel[stage.key]}</strong>
+          {detail && <small>{detail}</small>}
+        </span>
+        {stage.state === "active" && <span className="stage-percent">{Math.round(stage.fraction * 100)}%</span>}
+      </li>;
+    })}
   </ol>;
 }
 
