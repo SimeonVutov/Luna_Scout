@@ -34,6 +34,7 @@ from ..simulation.rays import site_ray_arrays
 from ..terrain.horizon import (
     HorizonMap,
     load_or_build_horizons,
+    prune_outdated_horizons,
     read_cached_horizons,
     site_label,
 )
@@ -139,11 +140,15 @@ class Worker:
             if playhead_only:
                 return None
             started = perf_counter()
-            self.queue.set_activity(run_id, "Building terrain horizons (one time per site, about a minute)")
+            self.queue.set_activity(run_id, "Building terrain horizons (one time per site)")
+
+            def report(done: int, total: int) -> None:
+                self.queue.set_activity(run_id, f"Building terrain horizons: {done * 100 // total}%")
+
             site = plan.site
             horizons = load_or_build_horizons(
                 terrain, origins_m, self.horizon_cache_dir,
-                site_label(site.latitude_deg, site.longitude_deg, site.radius_m),
+                site_label(site.latitude_deg, site.longitude_deg), progress=report,
             )
             logger.info(
                 "Built terrain horizons for %d receivers in %.1f s",
@@ -213,6 +218,9 @@ def main() -> None:
 
     queue = RunQueue(args.data_dir)
     queue.initialize()
+    outdated = prune_outdated_horizons(args.data_dir / "cache" / "horizons")
+    if outdated:
+        logger.info("Removed %d horizon maps saved by an older version.", outdated)
     removed = queue.prune_kept(KEPT_RESULTS_LIFETIME)
     if removed:
         logger.info("Removed %d kept runs of sites that were deleted more than %s ago.", removed, KEPT_RESULTS_LIFETIME)

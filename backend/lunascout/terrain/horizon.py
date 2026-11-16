@@ -2,8 +2,9 @@
 
 For every receiver the horizon map stores the highest terrain elevation angle in
 720 azimuth directions, measured on the same triangulated LOLA surface that the
-ray tracer uses. Terrain does not move, so the map is built once per site, grid
-and receiver height and reused for every timestamp and date range.
+ray tracer uses. Terrain does not move, so each receiver's horizon is built once and
+reused for every timestamp and date range. Receivers are saved per site centre, so a
+smaller site at the same centre reuses the receivers of a larger one.
 
 A ray is clear when it rises above the horizon at its azimuth and blocked when it
 passes below. Rays within a small margin of the interpolated horizon, and rays in
@@ -19,6 +20,7 @@ README.
 
 import hashlib
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from math import radians
 from pathlib import Path
@@ -34,7 +36,9 @@ from .model import Terrain
 AZIMUTH_COUNT = 720
 EXACT_TRACE_MARGIN_RAD = radians(0.05)
 # Change when the profile kernel or its inputs change, so stale caches are ignored.
-HORIZON_REVISION = 1
+HORIZON_REVISION = 2
+# Receivers built between saves of a growing map.
+_BUILD_CHUNK = 256
 
 logger = logging.getLogger(__name__)
 
@@ -86,16 +90,16 @@ def build_horizons(terrain: Terrain, origins_m: FloatArray) -> HorizonMap:
     return HorizonMap(elevation_rad, complete, east, north, up)
 
 
-def site_label(latitude_deg: float, longitude_deg: float, radius_m: float) -> str:
-    """The text stored in a cached map so it can be found again when its site is deleted."""
-    return f"{latitude_deg:.9f},{longitude_deg:.9f},{radius_m:g}"
+def site_label(latitude_deg: float, longitude_deg: float) -> str:
+    """The text stored in a cached map so it can be found again when its site is deleted.
+
+    Every site at one centre shares a map, whatever its radius.
+    """
+    return f"{latitude_deg:.9f},{longitude_deg:.9f}"
 
 
 def purge_horizons(cache_dir: Path, label: str) -> int:
-    """Delete the cached horizon maps built for one site; returns how many files were removed.
-
-    Maps saved before sites were labelled cannot be identified and are left alone.
-    """
+    """Delete the cached horizon maps built for one site centre; returns how many files were removed."""
     removed = 0
     for path in cache_dir.glob("*.npz"):
         try:
@@ -109,28 +113,65 @@ def purge_horizons(cache_dir: Path, label: str) -> int:
     return removed
 
 
+def prune_outdated_horizons(cache_dir: Path) -> int:
+    """Delete maps saved by an older version of the method; returns how many files were removed."""
+    removed = 0
+    for path in cache_dir.glob("*.npz"):
+        try:
+            with np.load(path, allow_pickle=False) as saved:
+                current = "revision" in saved.files and int(saved["revision"]) == HORIZON_REVISION
+        except (OSError, ValueError):
+            current = False
+        if not current:
+            path.unlink(missing_ok=True)
+            removed += 1
+    return removed
+
+
 def read_cached_horizons(
     terrain: Terrain, origins_m: FloatArray, cache_dir: Path
 ) -> HorizonMap | None:
-    """A previously built horizon map for identical terrain and receivers, if saved."""
-    path = cache_dir / f"{_cache_key(terrain, origins_m)}.npz"
-    return _read_cache(path, len(origins_m))
+    """The saved horizons for these receivers, or None unless every receiver is saved."""
+    stored = _read_cache(cache_dir / f"{_cache_key(terrain)}.npz")
+    if stored is None:
+        return None
+    rows = _rows_for(stored, origins_m)
+    return None if rows is None else _subset(stored.horizons, rows)
 
 
 def load_or_build_horizons(
-    terrain: Terrain, origins_m: FloatArray, cache_dir: Path, label: str = ""
+    terrain: Terrain,
+    origins_m: FloatArray,
+    cache_dir: Path,
+    label: str = "",
+    progress: Callable[[int, int], None] | None = None,
 ) -> HorizonMap:
-    """Reuse a cached horizon map for identical terrain and receivers, or build and save one.
+    """The horizons of these receivers, building and saving only the ones not yet saved.
 
-    `label` names the site in the saved file so the map can be deleted with its site.
+    Receivers are built in chunks and the map is saved after each one, so an interrupted build
+    keeps its progress. `progress(done, total)` is called after each chunk; an exception it
+    raises stops the build, with the finished chunks saved. `label` names the site centre in the
+    saved file so the map can be deleted with its site.
     """
-    cached = read_cached_horizons(terrain, origins_m, cache_dir)
-    if cached is not None:
-        return cached
+    path = cache_dir / f"{_cache_key(terrain)}.npz"
+    stored = _read_cache(path)
+    known = set(stored.index) if stored else set()
+    missing = [row for row, key in enumerate(_row_keys(origins_m)) if key not in known]
 
-    horizons = build_horizons(terrain, origins_m)
-    _write_cache(cache_dir / f"{_cache_key(terrain, origins_m)}.npz", horizons, label)
-    return horizons
+    for done in range(0, len(missing), _BUILD_CHUNK):
+        chunk = np.array(missing[done : done + _BUILD_CHUNK])
+        built = build_horizons(terrain, origins_m[chunk])
+        stored = _merge(stored, origins_m[chunk], built)
+        _write_cache(path, stored, label)
+        if progress:
+            progress(min(done + _BUILD_CHUNK, len(missing)), len(missing))
+
+    if stored is None:
+        raise ValueError("A horizon map needs at least one receiver.")
+    rows = _rows_for(stored, origins_m)
+    if rows is None:
+        raise RuntimeError("The saved horizon map is missing receivers that were just built.")
+    return _subset(stored.horizons, rows)
 
 
 def ray_visibility(
@@ -194,8 +235,20 @@ def ray_visibility(
     return statuses
 
 
-def _cache_key(terrain: Terrain, origins_m: FloatArray) -> str:
-    """Hash every input that changes the horizon: terrain, receivers and the method."""
+@dataclass(frozen=True)
+class _StoredMap:
+    """A saved map: receiver positions, their horizons, and a lookup from position to row."""
+
+    origins_m: FloatArray
+    horizons: HorizonMap
+    index: dict[bytes, int]
+
+
+def _cache_key(terrain: Terrain) -> str:
+    """Hash every input that changes a receiver's horizon except the receiver itself.
+
+    Terrain is prepared for the largest site at a centre, so this is one key per site centre.
+    """
     digest = hashlib.sha256()
     digest.update(
         f"rev={HORIZON_REVISION};bins={AZIMUTH_COUNT};"
@@ -203,30 +256,68 @@ def _cache_key(terrain: Terrain, origins_m: FloatArray) -> str:
     )
     for source in terrain.sources:
         digest.update(f"{source.sha256};{source.spacing_m};{source.bounds_m};".encode())
-    digest.update(np.ascontiguousarray(origins_m, dtype=np.float64).tobytes())
     return digest.hexdigest()
 
 
-def _read_cache(path: Path, receiver_count: int) -> HorizonMap | None:
+def _row_keys(origins_m: FloatArray) -> list[bytes]:
+    """Exact bytes of each receiver position, so a receiver is matched only by an identical one."""
+    rows = np.ascontiguousarray(origins_m, dtype=np.float64)
+    return [row.tobytes() for row in rows]
+
+
+def _rows_for(stored: _StoredMap, origins_m: FloatArray) -> NDArray[np.int64] | None:
+    try:
+        return np.array([stored.index[key] for key in _row_keys(origins_m)], dtype=np.int64)
+    except KeyError:
+        return None
+
+
+def _subset(horizons: HorizonMap, rows: NDArray[np.int64]) -> HorizonMap:
+    return HorizonMap(*(np.ascontiguousarray(getattr(horizons, name)[rows]) for name in HorizonMap.__dataclass_fields__))
+
+
+def _merge(stored: _StoredMap | None, origins_m: FloatArray, built: HorizonMap) -> _StoredMap:
+    if stored is None:
+        origins, horizons = np.asarray(origins_m, dtype=np.float64), built
+    else:
+        origins = np.concatenate([stored.origins_m, origins_m])
+        horizons = HorizonMap(*(
+            np.concatenate([getattr(stored.horizons, name), getattr(built, name)])
+            for name in HorizonMap.__dataclass_fields__
+        ))
+    return _StoredMap(origins, horizons, {key: row for row, key in enumerate(_row_keys(origins))})
+
+
+def _read_cache(path: Path) -> _StoredMap | None:
     if not path.is_file():
         return None
 
     try:
         with np.load(path, allow_pickle=False) as saved:
+            if int(saved["revision"]) != HORIZON_REVISION:
+                return None
+            origins = saved["origins_m"]
             horizons = HorizonMap(**{name: saved[name] for name in HorizonMap.__dataclass_fields__})
     except (OSError, ValueError, KeyError):
         logger.warning("Ignoring an unreadable horizon cache at %s", path)
         return None
 
-    if horizons.elevation_rad.shape != (receiver_count, AZIMUTH_COUNT):
+    if horizons.elevation_rad.shape != (len(origins), AZIMUTH_COUNT):
         logger.warning("Ignoring a horizon cache with an unexpected shape at %s", path)
         return None
-    return horizons
+    return _StoredMap(origins, horizons, {key: row for row, key in enumerate(_row_keys(origins))})
 
 
-def _write_cache(path: Path, horizons: HorizonMap, label: str) -> None:
+def _write_cache(path: Path, stored: _StoredMap, label: str) -> None:
+    """Save without compression: the map is rewritten after every chunk, and speed matters more."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=path.parent) as staging:
         staged_path = Path(staging) / path.name
-        np.savez_compressed(staged_path, site_label=np.array(label), **vars(horizons))
+        np.savez(
+            staged_path,
+            revision=np.array(HORIZON_REVISION),
+            site_label=np.array(label),
+            origins_m=stored.origins_m,
+            **vars(stored.horizons),
+        )
         staged_path.replace(path)

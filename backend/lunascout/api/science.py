@@ -109,7 +109,8 @@ def science_router(data_dir: Path, queue: RunQueue, public: PublicMode = PublicM
 
         With `keep`, the results and horizon maps are retained so the site can be restored when
         it comes back, and a restore later discards whatever falls outside its timeline. Without
-        it, everything of the site is removed.
+        it, everything of the site is removed. Horizon maps are shared by every radius at one
+        centre, so another site at the same centre rebuilds its map when it next runs.
         """
         public.require_private()
         if keep:
@@ -118,7 +119,7 @@ def science_router(data_dir: Path, queue: RunQueue, public: PublicMode = PublicM
             )
 
         runs = queue.purge_site(latitude_deg, longitude_deg, radius_m)
-        maps = purge_horizons(data_dir / "cache" / "horizons", site_label(latitude_deg, longitude_deg, radius_m))
+        maps = purge_horizons(data_dir / "cache" / "horizons", site_label(latitude_deg, longitude_deg))
         return PurgeResult(runs_removed=runs, runs_kept=0, horizon_maps_removed=maps)
 
     @router.put("/runs/priority", status_code=204)

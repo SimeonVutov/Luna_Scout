@@ -10,7 +10,7 @@ This folder holds the NASA inputs, the caches and the simulation outputs. `uv ru
 | `raw/terrain/LDEM_60S_240MPP_ADJ.TIF` | 240 m LOLA, 60°S–90°S: far-field horizon | NASA Goddard PGDA |
 | `raw/terrain/LDEM_80S_80MPP_ADJ.TIF` | 80 m LOLA, used within about 120 km of a site | NASA Goddard PGDA |
 | `raw/terrain/*_final_adj_5mpp_surf.tif` | 5 m LOLA for 10 candidate sites (below) | NASA Goddard PGDA |
-| `cache/horizons/` | Terrain horizon maps, one per site, grid and receiver height | computed |
+| `cache/horizons/` | Terrain horizon maps, one file per site centre. Each point's horizon is built once and shared by every site radius at that centre | computed |
 | `runs/` | Run queue (`queue.sqlite3`) and per-timestamp result grids | computed |
 | `logs/ephemeris-check.log` | One line per `check-ephemeris` run: the largest SPICE–Horizons difference | computed |
 
