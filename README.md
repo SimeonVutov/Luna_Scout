@@ -4,7 +4,24 @@
 
 LunaScout is a web application built for the 2026 NASA Space Apps Challenge, *Lunar Landing Site Navigator*. It answers the two questions that decide a south-pole mission: will the lander have power, and can it talk to Earth? It traces real NASA terrain against JPL ephemerides to show, for any site and date range, which ground is lit, when the Sun and Earth rise and set, and how two candidate sites compare.
 
-![LunaScout showing the Moon in 3D with three saved landing sites](docs/images/overview-3d.png)
+**Try it:** [luna-scout.online](https://luna-scout.online) · **Watch:** [the video tutorial](#video-tutorial)
+
+## Video tutorial
+
+[![The LunaScout video tutorial: Sun rays over Connecting Ridge in the 3D view. Click to watch.](docs/images/tutorial.jpg)](docs/tutorial.mp4)
+
+**[Watch the tutorial (84 s, MP4)](docs/tutorial.mp4).** It is a screen recording of the real application, following the path a mission planner takes to choose a site:
+
+1. **Choose the dates.** The Sun and Earth move, so every date gives different light and contact.
+2. **Add sites.** Pick NASA's candidate sites from the reference list, or click the map to add your own.
+3. **Run the simulation.** Sun and Earth positions come from JPL Horizons, and shadows are traced over every point of the site.
+4. **Play through the day.** The ground is coloured by how much of the Sun each point sees.
+5. **See why.** **Sun rays** and **Earth rays** show which points see the Sun and Earth and which ridge blocks them. **Stand at site** shows the horizon from the ground.
+6. **Switch layers.** Earth radio coverage, the best spots over the dates, and NASA's long-term maps.
+7. **Read the site's numbers.** The results panel holds the skyline, the terrain, and modelled ice and temperature, on the 3D view or the flat 2D map.
+8. **Compare two sites.** Watch both on one timeline, then read the whole-period scorecard, where ▲ marks the better site on each measure.
+
+The video studies 23 November 2026. On that date Shackleton Rim spends much of the day in shadow, and Connecting Ridge comes out ahead on every measure where the two differ. Most of the video plays at 1.5× speed, and the new site's simulation at 30×.
 
 ## Why it exists
 
@@ -19,6 +36,7 @@ The tools that hold this data (NASA's Quickmap and Moon Trek, JPL Horizons) are 
 | **Terrain** | NASA LOLA elevation models: 5 m around ten candidate sites, 80 m inside 80°S and 240 m out to 60°S |
 | **Sun and Earth** | NASA JPL Horizons vectors, rotated into the lunar frame with NAIF SPICE |
 | **Physics** | Finite Sun disk, curved Moon, terrain shadows, Earth eclipses, no atmosphere |
+| **Ice and temperature** | NASA Diviner model of temperatures and where ice would be stable, per site |
 | **Imagery** | NASA Moon Trek LROC WAC and NAC mosaics |
 | **Views** | Interactive 3D Moon and flat south-polar map, for one site or two side by side |
 
@@ -29,6 +47,8 @@ The tools that hold this data (NASA's Quickmap and Moon Trek, JPL Horizons) are 
 The application opens on the Moon in 3D. The Sun and Earth sit where JPL Horizons puts them, and the terrain refines as you zoom from the whole globe down to individual rims and craters near the south pole. The Moon stays fixed and the sky moves around it, so playing the timeline never spins the scene.
 
 Pick a site from NASA's candidate list or click anywhere between 60°S and 90°S to add your own, then press play. The map shows what each part of the site sees at the chosen time.
+
+![LunaScout showing the Moon in 3D with three saved landing sites](docs/images/overview-3d.png)
 
 ### See why a spot is dark
 
@@ -119,12 +139,11 @@ To keep NASA data somewhere else, set `LUNASCOUT_DATA_DIR` to the same absolute 
 
 To run LunaScout on a server of your own, with HTTPS and protections for public use, follow [deploy/README.md](deploy/README.md).
 
-## Using the application
+## Good to know
 
-1. Choose a reference site, or press **Add site**, switch to the flat map and click where the site should be.
-2. Set the UTC date range on the timeline and press **Run simulation**. The playhead's time is computed first, so there is something to look at immediately.
-3. Press play or scrub the timeline. Use the **Layer** menu, **Sun rays** and **Earth rays** to see what each part of the site sees.
-4. Switch to **Compare**, choose two sites, and use **Live maps** or **Whole period**.
+The [video tutorial](#video-tutorial) shows the usual steps. A few details it does not:
+
+**Dates are UTC.** The playhead's time is computed first after **Run simulation**, so there is something to look at immediately.
 
 **One timeline for every site.** Changing the date range starts a simulation for all saved sites. Only the missing times are computed, because results stored for the same site and settings are reused, and narrowing the range deletes nothing. Long ranges are limited by how fast JPL Horizons answers: a year at 15-minute sampling needs about 2,200 requests, sent one at a time. Choose a coarser **Sample every** in Settings for ranges longer than a few months.
 
