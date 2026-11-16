@@ -1,6 +1,7 @@
 """Run submission, streaming progress, and scientific display data."""
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -103,7 +104,7 @@ def science_router(data_dir: Path, queue: RunQueue, public: PublicMode = PublicM
             known = queue.lookup(plan)
             covered = known.run is not None or known.reusable_samples >= known.total_samples
             public.check_run(spec, None if covered else queue.unfinished_count())
-            return queue.submit(plan, spec.priority_utc, owner=spec.session)
+            return queue.submit(plan, spec.priority_utc, session=spec.session)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 
@@ -113,31 +114,27 @@ def science_router(data_dir: Path, queue: RunQueue, public: PublicMode = PublicM
         of the same site and settings computed at these times. Starts nothing."""
         return queue.lookup(plan_for(spec))
 
-    def check_control(run_id: str, session: str | None) -> None:
-        """On a public server, only the browser that started a run may pause or cancel it."""
-        try:
-            owner = queue.owner(run_id)
-        except KeyError as exc:
-            raise HTTPException(404, "Run not found") from exc
-        if public.enabled and (session is None or owner != session):
-            raise HTTPException(403, "Only the browser that started this simulation can pause or cancel it.")
+    def session_of(session: str | None) -> str | None:
+        """Controls act on the caller's own request, so a public server needs to know whose."""
+        if public.enabled and session is None:
+            raise HTTPException(422, "Pausing, resuming and cancelling need the browser's session.")
+        return session
+
+    def found(status: RunStatus | None) -> RunStatus:
+        if status is None:
+            raise HTTPException(404, "Run not found")
+        return status
 
     @router.post("/runs/{run_id}/pause")
     def pause_run(run_id: RunId, session: Session = None) -> RunStatus:
-        """Stop computing, keeping everything computed so far."""
-        check_control(run_id, session)
-        status = queue.pause(run_id)
-        if status is None:
-            raise HTTPException(404, "Run not found")
-        return status
+        """Pause this browser's request, keeping everything computed so far. The run keeps going
+        while another browser still wants it."""
+        return found(queue.pause(run_id, session_of(session)))
 
     @router.post("/runs/{run_id}/resume")
-    def resume_run(run_id: RunId) -> RunStatus:
-        """Continue a paused or failed run from where it stopped. Anyone may resume."""
-        status = queue.resume(run_id)
-        if status is None:
-            raise HTTPException(404, "Run not found")
-        return status
+    def resume_run(run_id: RunId, session: Session = None) -> RunStatus:
+        """Want the run again, and continue it from where it stopped."""
+        return found(queue.resume(run_id, session_of(session)))
 
     @router.get("/runs")
     def list_runs(limit: Annotated[int, Query(ge=1, le=100)] = 30) -> RunList:
@@ -166,11 +163,11 @@ def science_router(data_dir: Path, queue: RunQueue, public: PublicMode = PublicM
         return PurgeResult(runs_removed=runs, runs_kept=0, horizon_maps_removed=maps)
 
     # Declared after DELETE /runs/site, so that path is not read as a run ID.
-    @router.delete("/runs/{run_id}", status_code=204)
-    def cancel_run(run_id: RunId, session: Session = None) -> None:
-        """Stop a run and delete what it computed. Snapshots shared with other runs are kept."""
-        check_control(run_id, session)
-        queue.cancel(run_id)
+    @router.delete("/runs/{run_id}")
+    def cancel_run(run_id: RunId, session: Session = None) -> RunStatus:
+        """Withdraw this browser's request. Nothing computed is deleted: when nobody else wants the
+        run it stops and is hidden, and its samples stay for any later or overlapping request."""
+        return found(queue.cancel(run_id, session_of(session)))
 
     @router.put("/runs/priority", status_code=204)
     def prioritize(spec: RunPriority) -> None:
@@ -187,10 +184,16 @@ def science_router(data_dir: Path, queue: RunQueue, public: PublicMode = PublicM
             versions = dict.fromkeys(run_id, -1)
             loops = 0
             while not await request.is_disconnected():
-                statuses = await asyncio.to_thread(queue.changes, versions)
+                statuses, removed = await asyncio.to_thread(queue.changes, versions)
                 for status in statuses:
                     versions[status.run_id] = status.revision
                     yield f"data: {status.model_dump_json()}\n\n"
+                # A run deleted on the server is reported once, so the page stops waiting for it.
+                for gone in removed:
+                    versions.pop(gone, None)
+                    yield f"data: {json.dumps({'run_id': gone, 'removed': True})}\n\n"
+                if not versions:
+                    return
                 if loops % 15 == 0:
                     yield ": keep-alive\n\n"
                 loops += 1

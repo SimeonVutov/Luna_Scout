@@ -48,8 +48,8 @@ def precompute_reference_sites(data_dir: Path, queue: RunQueue, first_day: date,
     report = []
     for site in REFERENCE_SITES:
         plan = reference_plan(data_dir, site, first_day, last_day)
-        status = queue.submit(plan, owner=PRECOMPUTE_OWNER, background=True)
-        dropped = queue.drop_superseded_background(plan)
+        status = queue.submit(plan, session=PRECOMPUTE_OWNER, background=True)
+        dropped = queue.drop_superseded_background(plan, PRECOMPUTE_OWNER)
         report.append(
             f"{site.name}: {status.completed_samples} of {status.total_samples} samples ready"
             + (f", replaced {dropped} older run(s)" if dropped else "")

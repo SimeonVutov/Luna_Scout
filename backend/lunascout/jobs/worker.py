@@ -223,6 +223,9 @@ def main() -> None:
     outdated = prune_outdated_horizons(args.data_dir / "cache" / "horizons")
     if outdated:
         logger.info("Removed %d horizon maps saved by an older version.", outdated)
+    unwanted = queue.prune_abandoned(KEPT_RESULTS_LIFETIME)
+    if unwanted:
+        logger.info("Removed %d runs nobody asked for in %s.", unwanted, KEPT_RESULTS_LIFETIME)
     removed = queue.prune_kept(KEPT_RESULTS_LIFETIME)
     if removed:
         logger.info("Removed %d kept runs of sites that were deleted more than %s ago.", removed, KEPT_RESULTS_LIFETIME)

@@ -47,5 +47,6 @@ DEFAULT_OPTIONS = {
     "ray_method": "horizon",
 }
 DEFAULT_SNAPSHOT_MINUTES = 60
-# Precomputed runs are started by this owner, so on a public server no visitor can pause them.
+# The session that requests precomputed runs. Visitors pausing or cancelling only withdraw their own
+# requests, so they never stop the precompute.
 PRECOMPUTE_OWNER = "precompute"

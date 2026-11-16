@@ -104,6 +104,9 @@ class RunLookup(BaseModel):
     total_samples: int
 
 
+# The request recorded for callers without a browser session, such as a private server's CLI.
+LOCAL_SESSION = "local"
+
 # A worker that has not reported for this long is treated as stopped.
 WORKER_TIMEOUT_NS = 10_000_000_000
 
@@ -172,6 +175,14 @@ class RunQueue:
                     activity TEXT,
                     activity_run TEXT
                 );
+                CREATE TABLE IF NOT EXISTS run_requests (
+                    -- Each browser session that asked for a run. A run is computed while at least
+                    -- one request is active, so one visitor's pause or cancel never stops another's.
+                    run_id TEXT NOT NULL REFERENCES runs(run_id),
+                    session TEXT NOT NULL,
+                    paused INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (run_id, session)
+                );
                 CREATE TABLE IF NOT EXISTS ephemeris_chunks (
                     run_id TEXT NOT NULL REFERENCES runs(run_id),
                     start_index INTEGER NOT NULL,
@@ -192,22 +203,27 @@ class RunQueue:
         if "background" not in columns:
             db.execute("ALTER TABLE runs ADD COLUMN background INTEGER NOT NULL DEFAULT 0")
         if "owner" not in columns:
-            # The browser session that first asked for the run; on a public server only it may
-            # pause or cancel the run.
+            # The session that first asked for the run, kept for the record.
             db.execute("ALTER TABLE runs ADD COLUMN owner TEXT")
+        if "abandoned" not in columns:
+            # Zero while someone wants the run; otherwise when the last request was cancelled. An
+            # abandoned run is hidden and not computed, but its samples stay for others to reuse.
+            db.execute("ALTER TABLE runs ADD COLUMN abandoned INTEGER NOT NULL DEFAULT 0")
         for row in db.execute("SELECT run_id, plan FROM runs WHERE physics_key IS NULL").fetchall():
             key = RunPlan.model_validate_json(row["plan"]).physics_key()
             db.execute("UPDATE runs SET physics_key = ? WHERE run_id = ?", (key, row["run_id"]))
 
     def submit(
-        self, plan: RunPlan, priority_at: datetime | None = None, owner: str | None = None, *, background: bool = False
+        self, plan: RunPlan, priority_at: datetime | None = None, session: str | None = None, *, background: bool = False
     ) -> RunStatus:
-        """Reuse identical inputs. A failed run can resume its remaining samples; a paused run stays
-        paused until it is resumed, so changing the timeline never restarts it by surprise.
+        """Reuse identical inputs, and record `session` as wanting the run.
 
-        A new run first copies the samples that earlier runs of the same site and settings already
-        computed at the same times, so a longer or shorter range only computes what is missing.
+        A failed run resumes its remaining samples. A run its requesters paused stays paused when
+        one of them submits again, so changing the timeline never restarts it by surprise, but a
+        new requester restarts it. A new run first copies the samples that earlier runs of the
+        same site and settings computed at the same times, so only the missing times are computed.
         """
+        session = session or LOCAL_SESSION
         index = plan.frame_index(priority_at) if priority_at is not None else 0
         run_id = plan.identity()
         with self._connection() as db:
@@ -224,9 +240,22 @@ class RunQueue:
                     revision = runs.revision + CASE WHEN runs.stage = 'failed' THEN 1 ELSE 0 END
                 WHERE runs.stage != 'complete'
                 """,
-                (run_id, plan.model_dump_json(), index, time_ns(), plan.physics_key(), owner, int(background)),
+                (run_id, plan.model_dump_json(), index, time_ns(), plan.physics_key(), session, int(background)),
             )
             db.execute("UPDATE runs SET orphaned = 0 WHERE run_id = ?", (run_id,))
+            new_request = db.execute(
+                "INSERT OR IGNORE INTO run_requests (run_id, session) VALUES (?, ?)", (run_id, session)
+            ).rowcount
+            # Someone new wants a run that was abandoned or paused by everyone else: restart it.
+            db.execute(
+                """
+                UPDATE runs SET abandoned = 0,
+                    stage = CASE WHEN stage = 'paused' THEN 'queued' ELSE stage END,
+                    revision = revision + 1
+                WHERE run_id = ? AND (abandoned > 0 OR (? AND stage = 'paused'))
+                """,
+                (run_id, new_request),
+            )
             discarded: list[str] = []
             if is_new:
                 self._reuse_samples(db, run_id, plan)
@@ -245,19 +274,23 @@ class RunQueue:
         """The run for this plan if it exists, and how much of it earlier runs already computed."""
         with self._connection() as db:
             row = self._find(db, plan.identity())
-            if row is not None:
+            if row is not None and not row["abandoned"]:
                 status = self._status(db, row)
                 return RunLookup(run=status, reusable_samples=status.completed_samples, total_samples=status.total_samples)
             new_indices = {new_index for _, _, new_index, _ in self._aligned_samples(db, plan.identity(), plan)}
+            if row is not None:
+                new_indices |= {item[0] for item in db.execute("SELECT sample_index FROM readings WHERE run_id = ?", (row["run_id"],))}
         return RunLookup(run=None, reusable_samples=len(new_indices), total_samples=plan.interval_count + 1)
 
     def _aligned_samples(
         self, db: sqlite3.Connection, run_id: str, plan: RunPlan
-    ) -> Iterator[tuple[str, int, int, sqlite3.Row]]:
-        """Samples of earlier runs with the same physics at the same times as samples of `plan`.
+    ) -> Iterator[tuple[str, int, int, bool]]:
+        """Samples of other runs with the same physics at the same times as samples of `plan`.
 
-        Yields the earlier run, its sample index, the matching index in `plan`, and the row.
+        Yields the other run, its sample index, the matching index in `plan`, and whether the
+        other run published that sample as a snapshot. Samples `run_id` already has are skipped.
         """
+        have = {item[0] for item in db.execute("SELECT sample_index FROM readings WHERE run_id = ?", (run_id,))}
         step = plan.integration_step
         siblings = db.execute(
             "SELECT run_id, plan FROM runs WHERE physics_key = ? AND run_id != ?",
@@ -282,33 +315,47 @@ class RunQueue:
                 continue
 
             rows = db.execute(
-                "SELECT sample_index, is_frame, reading FROM readings WHERE run_id = ? AND sample_index BETWEEN ? AND ?",
+                "SELECT sample_index, is_frame FROM readings WHERE run_id = ? AND sample_index BETWEEN ? AND ?",
                 (sibling["run_id"], first, last),
             ).fetchall()
             for row in rows:
                 old_index, new_index = row["sample_index"], row["sample_index"] + offset
-                if other.at(old_index) == plan.at(new_index):
-                    yield sibling["run_id"], old_index, new_index, row
+                if new_index not in have and other.at(old_index) == plan.at(new_index):
+                    have.add(new_index)
+                    yield sibling["run_id"], old_index, new_index, bool(row["is_frame"])
 
     def _reuse_samples(self, db: sqlite3.Connection, run_id: str, plan: RunPlan) -> None:
-        """Copy matching samples, and their snapshot files, from earlier runs of the same physics."""
+        """Copy matching samples, and their snapshot files, from other runs of the same physics.
+
+        Called when a run is submitted and again before each of its batches, so runs whose dates
+        overlap compute each time only once, even while both are running.
+        """
         copied_from: dict[str, int] = {}
-        for sibling_id, old_index, new_index, row in self._aligned_samples(db, run_id, plan):
+        for sibling_id, old_index, new_index, sibling_frame in self._aligned_samples(db, run_id, plan):
             if plan.is_frame(new_index) and not (
-                row["is_frame"]
+                sibling_frame
                 and self._link_frame(self.frame_path(sibling_id, old_index), self.frame_path(run_id, new_index))
             ):
                 continue
 
             inserted = db.execute(
-                "INSERT OR IGNORE INTO readings VALUES (?, ?, ?, ?)",
-                (run_id, new_index, plan.is_frame(new_index), row["reading"]),
+                """
+                INSERT OR IGNORE INTO readings
+                SELECT ?, ?, ?, reading FROM readings WHERE run_id = ? AND sample_index = ?
+                """,
+                (run_id, new_index, plan.is_frame(new_index), sibling_id, old_index),
             )
             copied_from[sibling_id] = copied_from.get(sibling_id, 0) + inserted.rowcount
 
         for sibling_id, copied in copied_from.items():
             if copied:
-                db.execute("INSERT OR REPLACE INTO reused_samples VALUES (?, ?, ?)", (run_id, sibling_id, copied))
+                db.execute(
+                    """
+                    INSERT INTO reused_samples VALUES (?, ?, ?)
+                    ON CONFLICT(run_id, from_run_id) DO UPDATE SET samples = samples + excluded.samples
+                    """,
+                    (run_id, sibling_id, copied),
+                )
 
         total = sum(copied_from.values())
         if total:
@@ -394,7 +441,7 @@ class RunQueue:
     @staticmethod
     def _remove_runs(db: sqlite3.Connection, run_ids: Sequence[str]) -> list[str]:
         for run_id in run_ids:
-            for table in ("readings", "ephemeris_chunks", "reused_samples"):
+            for table in ("readings", "ephemeris_chunks", "reused_samples", "run_requests"):
                 db.execute(f"DELETE FROM {table} WHERE run_id = ?", (run_id,))
             db.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
         return list(run_ids)
@@ -403,28 +450,98 @@ class RunQueue:
         for run_id in run_ids:
             shutil.rmtree(self.directory / run_id, ignore_errors=True)
 
-    def owner(self, run_id: str) -> str | None:
-        """The session that first asked for the run, or None. Raises KeyError for an unknown run."""
+    def pause(self, run_id: str, session: str | None) -> RunStatus | None:
+        """Pause `session`'s request. The run stops once no requester wants it computed.
+
+        None for an unknown run. A run others still want keeps running.
+        """
         with self._connection() as db:
-            row = self._find(db, run_id)
+            if self._find(db, run_id) is None:
+                return None
+            db.execute(
+                "UPDATE run_requests SET paused = 1 WHERE run_id = ? AND session = ?",
+                (run_id, session or LOCAL_SESSION),
+            )
+            self._stop_if_unwanted(db, run_id, abandon=False)
+            return self._status(db, self._find_existing(db, run_id))
+
+    def resume(self, run_id: str, session: str | None) -> RunStatus | None:
+        """Make `session` want the run again and continue it from where it stopped."""
+        with self._connection() as db:
+            if self._find(db, run_id) is None:
+                return None
+            db.execute(
+                """
+                INSERT INTO run_requests (run_id, session) VALUES (?, ?)
+                ON CONFLICT(run_id, session) DO UPDATE SET paused = 0
+                """,
+                (run_id, session or LOCAL_SESSION),
+            )
+            db.execute(
+                """
+                UPDATE runs SET abandoned = 0, message = NULL, revision = revision + 1,
+                    stage = CASE WHEN stage IN ('paused', 'failed') THEN 'queued' ELSE stage END
+                WHERE run_id = ?
+                """,
+                (run_id,),
+            )
+            return self._status(db, self._find_existing(db, run_id))
+
+    def cancel(self, run_id: str, session: str | None) -> RunStatus | None:
+        """Withdraw `session`'s request. Nothing computed is deleted.
+
+        When nobody else wants the run, it stops and is hidden, but its samples stay for any
+        later or overlapping request to reuse, and are only removed when no one asked for them
+        for `KEEP_ABANDONED`.
+        """
+        with self._connection() as db:
+            if self._find(db, run_id) is None:
+                return None
+            db.execute(
+                "DELETE FROM run_requests WHERE run_id = ? AND session = ?", (run_id, session or LOCAL_SESSION)
+            )
+            self._stop_if_unwanted(db, run_id, abandon=True)
+            return self._status(db, self._find_existing(db, run_id))
+
+    def prune_abandoned(self, older_than: timedelta) -> int:
+        """Delete runs nobody has wanted for `older_than`; returns how many were removed.
+
+        Samples other runs copied from them are their own and stay.
+        """
+        cutoff = time_ns() - int(older_than.total_seconds() * 1e9)
+        with self._connection() as db:
+            stale = [
+                row["run_id"]
+                for row in db.execute("SELECT run_id FROM runs WHERE abandoned > 0 AND abandoned < ?", (cutoff,))
+            ]
+            doomed = self._remove_runs(db, stale)
+        self._delete_run_files(doomed)
+        return len(doomed)
+
+    def _stop_if_unwanted(self, db: sqlite3.Connection, run_id: str, *, abandon: bool) -> None:
+        """Pause the run when no request is active; with `abandon`, also hide it when none is left."""
+        requests = db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(paused = 0), 0) FROM run_requests WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        total, active = int(requests[0]), int(requests[1])
+        if active == 0:
+            db.execute(
+                """
+                UPDATE runs SET stage = 'paused', revision = revision + 1
+                WHERE run_id = ? AND stage IN ('queued', 'running')
+                """,
+                (run_id,),
+            )
+        if abandon and total == 0:
+            db.execute(
+                "UPDATE runs SET abandoned = ?, revision = revision + 1 WHERE run_id = ?", (time_ns(), run_id)
+            )
+
+    def _find_existing(self, db: sqlite3.Connection, run_id: str) -> sqlite3.Row:
+        row = self._find(db, run_id)
         if row is None:
-            raise KeyError(run_id)
-        return row["owner"]
-
-    def pause(self, run_id: str) -> RunStatus | None:
-        """Stop computing a run but keep everything computed so far. None for an unknown run."""
-        return self._set_stage(run_id, "paused", from_stages=("queued", "running"))
-
-    def resume(self, run_id: str) -> RunStatus | None:
-        """Continue a paused or failed run from where it stopped. None for an unknown run."""
-        return self._set_stage(run_id, "queued", from_stages=("paused", "failed"))
-
-    def cancel(self, run_id: str) -> bool:
-        """Stop a run and delete what it computed. Snapshots shared with other runs stay theirs."""
-        with self._connection() as db:
-            removed = self._remove_runs(db, [run_id] if self._find(db, run_id) else [])
-        self._delete_run_files(removed)
-        return bool(removed)
+            raise RunRemoved(run_id)
+        return row
 
     def check_wanted(self, run_id: str) -> None:
         """Raise if the run was deleted or paused, or is background work a visitor is waiting
@@ -474,16 +591,22 @@ class RunQueue:
             ))
         return result
 
-    def drop_superseded_background(self, plan: RunPlan) -> int:
+    def drop_superseded_background(self, plan: RunPlan, session: str) -> int:
         """Delete older precomputed runs of the same physics whose dates `plan` covers.
 
-        Called after `plan` was submitted, which copied their samples, so nothing is lost.
+        Called after `plan` was submitted, which copied their samples, so nothing is lost. A run
+        that anyone besides `session` (the precompute) asked for is kept.
         """
         with self._connection() as db:
             doomed = []
             for row in db.execute(
-                "SELECT run_id, plan FROM runs WHERE background = 1 AND physics_key = ? AND run_id != ?",
-                (plan.physics_key(), plan.identity()),
+                """
+                SELECT run_id, plan FROM runs AS run
+                WHERE background = 1 AND physics_key = ? AND run_id != ? AND NOT EXISTS (
+                    SELECT 1 FROM run_requests WHERE run_id = run.run_id AND session != ?
+                )
+                """,
+                (plan.physics_key(), plan.identity(), session),
             ).fetchall():
                 other = RunPlan.model_validate_json(row["plan"])
                 if plan.start_utc <= other.start_utc and other.end_utc <= plan.end_utc:
@@ -492,24 +615,11 @@ class RunQueue:
         self._delete_run_files(removed)
         return len(removed)
 
-    def _set_stage(self, run_id: str, stage: str, *, from_stages: tuple[str, ...]) -> RunStatus | None:
-        with self._connection() as db:
-            placeholders = ", ".join("?" for _ in from_stages)
-            db.execute(
-                f"""
-                UPDATE runs SET stage = ?, message = NULL, revision = revision + 1
-                WHERE run_id = ? AND stage IN ({placeholders})
-                """,
-                (stage, run_id, *from_stages),
-            )
-            row = self._find(db, run_id)
-            return self._status(db, row) if row is not None else None
-
     def unfinished_count(self) -> int:
         """How many visitors' runs are waiting or running. Precomputed runs are not counted."""
         with self._connection() as db:
             row = db.execute(
-                "SELECT COUNT(*) FROM runs WHERE stage IN ('queued', 'running') AND orphaned = 0 AND background = 0"
+                "SELECT COUNT(*) FROM runs WHERE stage IN ('queued', 'running') AND orphaned = 0 AND background = 0 AND abandoned = 0"
             ).fetchone()
         return int(row[0])
 
@@ -517,7 +627,7 @@ class RunQueue:
         """The most recently submitted runs first, whatever their state."""
         with self._connection() as db:
             rows = db.execute(
-                "SELECT * FROM runs WHERE orphaned = 0 ORDER BY submitted DESC LIMIT ?", (limit,)
+                "SELECT * FROM runs WHERE orphaned = 0 AND abandoned = 0 ORDER BY submitted DESC LIMIT ?", (limit,)
             ).fetchall()
             # Long runs have thousands of ready snapshots; the list only needs their progress.
             return [self._status(db, row, include_ready=False) for row in rows]
@@ -567,16 +677,19 @@ class RunQueue:
             row = self._find(db, run_id)
             return self._status(db, row) if row is not None else None
 
-    def changes(self, watched: dict[str, int]) -> list[RunStatus]:
-        """Read durable revisions even after an event stream reconnects."""
+    def changes(self, watched: dict[str, int]) -> tuple[list[RunStatus], list[str]]:
+        """Changed runs, and watched runs that no longer exist. Durable, so it survives a reconnect."""
         with self._connection() as db:
             db.execute("BEGIN")
             statuses = []
+            removed = []
             for run_id, revision in watched.items():
                 row = self._find(db, run_id)
-                if row is not None and row["revision"] != revision:
+                if row is None:
+                    removed.append(run_id)
+                elif row["revision"] != revision:
                     statuses.append(self._status(db, row))
-            return statuses
+            return statuses, removed
 
     def set_priority(self, run_ids: Sequence[str], at: datetime) -> None:
         with self._connection() as db:
@@ -611,6 +724,8 @@ class RunQueue:
 
             run_id = row["run_id"]
             plan = RunPlan.model_validate_json(row["plan"])
+            # Take what overlapping runs computed since this one last ran, rather than repeat it.
+            self._reuse_samples(db, run_id, plan)
             computed = {
                 result[0]
                 for result in db.execute(
@@ -624,8 +739,10 @@ class RunQueue:
                 indices = (priority,)
             else:
                 # Published snapshots first, then the samples between them, each in time order.
+                # The closing sample is not a published snapshot, so it belongs to the samples between.
                 missing_frames = (
-                    index for index in range(0, plan.interval_count + 1, plan.stride) if index not in computed
+                    index for index in range(0, plan.interval_count + 1, plan.stride)
+                    if index not in computed and plan.is_frame(index)
                 )
                 missing_between = (
                     index for index in range(plan.interval_count + 1)

@@ -39,13 +39,13 @@ def test_background_work_waits_behind_visitors_and_steps_aside_mid_batch(tmp_pat
     queue = RunQueue(tmp_path)
     queue.initialize()
     background = _hourly_plan(START, 24)
-    queue.submit(background, owner="precompute", background=True)
+    queue.submit(background, session="precompute", background=True)
     # Precomputing never fills the public server's limit on waiting visitors' runs.
     assert queue.unfinished_count() == 0
     assert queue.next_batch(4).run_id == background.identity()
 
     visitor = _hourly_plan(START, 3, solar_disk_samples=10)
-    queue.submit(visitor, owner="browser-one")
+    queue.submit(visitor, session="browser-one")
     assert queue.unfinished_count() == 1
     with pytest.raises(RunYielded):
         queue.record(WorkBatch(background.identity(), background, (5,)), 5, _reading(background.at(5), "clear", 1, 1000))
@@ -56,15 +56,15 @@ def test_a_wider_precompute_takes_over_an_older_one_and_reports_its_coverage(tmp
     queue = RunQueue(tmp_path)
     queue.initialize()
     one_day = _hourly_plan(START, 24)
-    queue.submit(one_day, owner="precompute", background=True)
+    queue.submit(one_day, session="precompute", background=True)
     _compute_all(queue, one_day)
     queue.complete(one_day.identity(), _period())
 
     two_days = _hourly_plan(START, 48)
-    status = queue.submit(two_days, owner="precompute", background=True)
+    status = queue.submit(two_days, session="precompute", background=True)
     # Everything carries over except the first run's closing sample, which is a published snapshot only in the wider run.
     assert status.completed_samples == one_day.interval_count
-    assert queue.drop_superseded_background(two_days) == 1
+    assert queue.drop_superseded_background(two_days, "precompute") == 1
     assert queue.status(one_day.identity()) is None
     # The copied snapshot files survive the older run's deletion.
     assert queue.frame(two_days.identity(), 1) is not None and queue.frame(two_days.identity(), 1)[1].is_file()
