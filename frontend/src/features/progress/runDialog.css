@@ -1,0 +1,135 @@
+.run-dialog {
+  --done: #8fd9b5;
+  --done-bg: #22332d;
+  position: fixed;
+  top: 88px;
+  left: 50%;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  width: min(540px, calc(100vw - 32px));
+  max-height: calc(100vh - 240px);
+  border: 1px solid var(--overlay-edge);
+  border-radius: 14px;
+  background: var(--overlay);
+  box-shadow: 0 18px 50px #000a, 0 0 0 1px #ffffff08 inset;
+  backdrop-filter: blur(10px);
+  transform: translateX(-50%);
+  animation: run-dialog-in 220ms cubic-bezier(.2, .8, .2, 1);
+}
+
+.run-dialog-head,
+.run-dialog-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+}
+
+.run-dialog-head {
+  border-bottom: 1px solid var(--edge);
+}
+
+.run-dialog-head h2 {
+  font-size: .95rem;
+  font-weight: 640;
+  outline: none;
+}
+
+.run-dialog.ready .run-dialog-head h2 {
+  color: var(--done);
+}
+
+.run-dialog-body {
+  display: grid;
+  gap: 10px;
+  padding: 14px 18px;
+  overflow-y: auto;
+}
+
+.run-dialog-foot {
+  justify-content: flex-end;
+  border-top: 1px solid var(--edge);
+}
+
+.run-dialog-foot p {
+  flex: 1;
+  color: var(--muted);
+  font-size: .72rem;
+}
+
+/* One site */
+
+.run-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  transition: border-color 400ms;
+}
+
+.run-card.complete {
+  border-color: #3d6352;
+}
+
+.run-card header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.run-card-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .86rem;
+  font-weight: 620;
+  color: var(--text-strong);
+}
+
+.run-card-percent {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 1.45rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.run-card.complete .run-card-percent {
+  color: var(--done);
+  font-size: 1rem;
+  animation: run-pop 420ms cubic-bezier(.2, 1.6, .4, 1);
+}
+
+.run-card-status {
+  font-size: .76rem;
+  color: var(--text-soft);
+}
+
+.run-card-status.waiting {
+  color: #f0cf8a;
+}
+
+.run-card-status.done {
+  color: var(--done);
+}
+
+.run-card-status.stopped {
+  color: var(--muted);
+}
+
+.run-card-note {
+  margin-top: -4px;
+  font-size: .68rem;
+  color: var(--muted);
+}
+
+.run-card.complete .stage-bar {
+  animation: run-glow 900ms ease-out;
+}
