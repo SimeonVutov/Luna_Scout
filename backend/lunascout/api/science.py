@@ -98,8 +98,11 @@ def science_router(data_dir: Path, queue: RunQueue, public: PublicMode = PublicM
     def request_run(spec: RunSpec) -> RunStatus:
         plan = plan_for(spec)
         try:
-            # A run that already exists is only reused, so it never counts against the busy limit.
-            public.check_run(spec, None if queue.status(plan.identity()) else queue.unfinished_count())
+            # A run that already exists, or whose every sample earlier runs computed, needs at most
+            # seconds of work, so it never counts against the busy limit.
+            known = queue.lookup(plan)
+            covered = known.run is not None or known.reusable_samples >= known.total_samples
+            public.check_run(spec, None if covered else queue.unfinished_count())
             return queue.submit(plan, spec.priority_utc, owner=spec.session)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc

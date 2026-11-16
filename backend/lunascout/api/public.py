@@ -20,7 +20,8 @@ from .models import RunSpec
 
 # Heavy routes and how many requests one visitor may make to each per minute.
 _RATE_LIMITS_PER_MINUTE = {
-    "POST /api/runs": 6,
+    # A date change submits every saved site at once, and each submit is cheap.
+    "POST /api/runs": 30,
     "POST /api/terrain/rays": 20,
     "POST /api/terrain/insight": 12,
     "POST /api/terrain/context": 30,
@@ -38,8 +39,9 @@ class PublicMode:
     max_range: timedelta = timedelta(days=35)
     min_grid_spacing_m: float = 20.0
     max_solar_disk_samples: int = 61
-    # Runs waiting or running at once. The single worker handles them one after another.
-    max_unfinished_runs: int = 6
+    # Visitors' runs waiting or running at once, across the server. The single worker handles them
+    # one after another; runs already covered by stored results are not counted.
+    max_unfinished_runs: int = 20
 
     @classmethod
     def from_environment(cls) -> "PublicMode":

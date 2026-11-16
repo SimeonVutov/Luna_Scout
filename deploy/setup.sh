@@ -92,10 +92,14 @@ systemctl enable --now lunascout-api lunascout-worker
 systemctl restart lunascout-api lunascout-worker
 systemctl enable --now lunascout-ephemeris-check.timer
 systemctl enable --now lunascout-precompute.timer
-# Queue the reference sites now too, rather than waiting for the first weekly run.
-systemctl start lunascout-precompute
 systemctl enable caddy
 systemctl restart caddy
+
+# Queue the reference sites now rather than at the first weekly run. A failure here is reported
+# but does not stop the setup: the timer tries again.
+if ! systemctl start lunascout-precompute; then
+  echo "Warning: could not queue the reference sites. See: journalctl -u lunascout-precompute -n 30" >&2
+fi
 
 echo
 echo "Done. Check https://$DOMAIN once the DNS record points at this server."

@@ -128,7 +128,8 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
   useEffect(() => {
     for (const site of sites) {
       const key = requestKey(site, range, options);
-      if (site.latitude_deg > -60 || ids[key] || lookedUp.current.has(key)) continue;
+      // A request being submitted right now, for example by a date change, needs no lookup.
+      if (site.latitude_deg > -60 || ids[key] || pending[key] || lookedUp.current.has(key)) continue;
 
       lookedUp.current.add(key);
       const request = { ...range, ...options, site, priority_utc: atUtc };
