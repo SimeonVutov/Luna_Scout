@@ -1,0 +1,11 @@
+[Unit]
+Description=Queue NASA's reference sites for LunaScout to precompute while idle
+
+[Service]
+Type=oneshot
+User=lunascout
+WorkingDirectory=/srv/lunascout/app/backend
+EnvironmentFile=/etc/lunascout.env
+# Only queues background runs, from the first of this month to the end of next month. The worker
+# computes them whenever no visitor is waiting.
+ExecStart=/srv/lunascout/app/backend/.venv/bin/lunascout-science precompute

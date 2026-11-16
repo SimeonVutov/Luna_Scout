@@ -84,12 +84,16 @@ chown root:"$APP_USER" /etc/lunascout.env
 
 echo "==> Services"
 cp "$APP/deploy/lunascout-api.service" "$APP/deploy/lunascout-worker.service" \
-  "$APP/deploy/lunascout-ephemeris-check.service" "$APP/deploy/lunascout-ephemeris-check.timer" /etc/systemd/system/
+  "$APP/deploy/lunascout-ephemeris-check.service" "$APP/deploy/lunascout-ephemeris-check.timer" \
+  "$APP/deploy/lunascout-precompute.service" "$APP/deploy/lunascout-precompute.timer" /etc/systemd/system/
 sed "s/DOMAIN/$DOMAIN/g" "$APP/deploy/Caddyfile" > /etc/caddy/Caddyfile
 systemctl daemon-reload
 systemctl enable --now lunascout-api lunascout-worker
 systemctl restart lunascout-api lunascout-worker
 systemctl enable --now lunascout-ephemeris-check.timer
+systemctl enable --now lunascout-precompute.timer
+# Queue the reference sites now too, rather than waiting for the first weekly run.
+systemctl start lunascout-precompute
 systemctl enable caddy
 systemctl restart caddy
 
