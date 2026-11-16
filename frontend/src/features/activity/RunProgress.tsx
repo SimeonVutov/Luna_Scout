@@ -1,5 +1,6 @@
 import type { RunStatus } from "../../api/types";
 import { Icon } from "../../Icon";
+import { runShare } from "../progress/progressModel";
 import { wholePercent } from "../results/format";
 import "./activity.css";
 
@@ -18,7 +19,7 @@ export function RunProgress({ run, phase, workerRunning }: {
     return <p className="run-state done"><Icon name="check" size={13} /> Simulation done</p>;
   }
   if (run.stage === "paused") {
-    const done = run.total_samples ? run.completed_samples / run.total_samples : 0;
+    const done = runShare(run);
     return <p className="run-state">Paused at {wholePercent.format(done)}</p>;
   }
   if (run.stage === "failed") {
@@ -26,7 +27,7 @@ export function RunProgress({ run, phase, workerRunning }: {
   }
 
   const waiting = workerRunning === false;
-  const fraction = run.total_samples ? run.completed_samples / run.total_samples : 0;
+  const fraction = runShare(run);
   return <div className="run-progress live" role="status">
     <progress aria-label="Simulation progress" max={1} value={run.stage === "queued" ? undefined : fraction} />
     <span className={waiting ? "warn-text" : undefined}>

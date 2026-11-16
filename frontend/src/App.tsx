@@ -19,6 +19,9 @@ import { maximumSiteRadius, referenceSites } from "./features/sites/referenceSit
 import { SitePanel } from "./features/sites/SitePanel";
 import { useSiteCatalog } from "./features/sites/useSiteCatalog";
 import { readyLabel, usePrecomputed } from "./features/sites/usePrecomputed";
+import { RunDialog } from "./features/progress/RunDialog";
+import { RunPill } from "./features/progress/RunPill";
+import { useRunDialog } from "./features/progress/useRunDialog";
 import { defaultSpaceLayers } from "./features/space/layers";
 import { Timeline } from "./features/timeline/Timeline";
 import type { ReadyTrack } from "./features/timeline/Timeline";
@@ -78,6 +81,13 @@ export function App() {
   const precomputed = usePrecomputed();
   const single = mode === "single";
   const inSpace = view === "3d";
+
+  const progress = useRunDialog(sites, (site) => ({
+    site,
+    slot: single ? null : slots.find((slot) => chosen[slot]?.id === site.id) ?? null,
+    run: science.status(site),
+    pausedForYou: science.pausedForYou(site),
+  }));
 
   const selectedRun = science.status(selected);
   const compareRuns: Record<Slot, RunStatus | null> = { a: science.status(chosen.a), b: science.status(chosen.b) };
@@ -155,6 +165,8 @@ export function App() {
       result.status === "rejected" ? [`${targets[index].name} · ${errorText(result.reason)}`] : []);
 
     if (problems.length) setError(problems.join(" "));
+    // Only an explicit Run opens the progress dialog; timeline changes start runs quietly.
+    if (targets.length) progress.show(targets);
     void activity.refresh();
   }
 
@@ -210,7 +222,7 @@ export function App() {
           submitting={submittedSites.some(science.submitting)} canStart={chosen.a !== null && chosen.b !== null && runnableSites.length + pausedSites.length > 0}
           pausedForYou={{ a: science.pausedForYou(chosen.a), b: science.pausedForYou(chosen.b) }}
           onPause={(slot) => control(science.pause, chosen[slot])} onResume={(slot) => control(science.resume, chosen[slot])}
-          onCancel={(slot) => control(science.cancel, chosen[slot])}
+          onCancel={(slot) => control(science.cancel, chosen[slot])} onShowProgress={() => progress.show(submittedSites)}
           onAssign={comparison.assign} onSwap={comparison.swap} onRun={() => void startRuns()} onOpenSettings={() => setSettingsOpen(true)} />}
 
         {!single && compareView === "summary" && <CompareSummary range={range} at={instant} panes={{
@@ -246,10 +258,16 @@ export function App() {
           options={options} insight={selectedData.insight.insight} insightLoading={selectedData.insight.loading} insightError={selectedData.insight.error} ice={selectedData.ice}
           pausedForYou={science.pausedForYou(selected)}
           onRun={() => void startRuns()} onPause={() => control(science.pause, selected)} onResume={() => control(science.resume, selected)}
-          onCancel={() => control(science.cancel, selected)} onOpenSettings={() => setSettingsOpen(true)} canStart={runnableSites.length > 0} />}
+          onCancel={() => control(science.cancel, selected)} onShowProgress={() => progress.show(selected ? [selected] : [])}
+          onOpenSettings={() => setSettingsOpen(true)} canStart={runnableSites.length > 0} />}
       </div>
 
       <Timeline range={range} index={timeIndex} onIndex={setTimeIndex} onRange={changeRange} tracks={tracks} />
+
+      {progress.open && <RunDialog entries={progress.entries} onHide={progress.hide}
+        onPause={(site) => control(science.pause, site)} onResume={(site) => control(science.resume, site)}
+        onCancel={(site) => control(science.cancel, site)} />}
+      {progress.hidden && <RunPill entries={progress.entries} onOpen={progress.reopen} />}
 
       {settingsOpen && <SettingsDrawer options={options} onClose={() => setSettingsOpen(false)}
         onApply={(next) => { setOptions(next); setSettingsOpen(false); }} />}

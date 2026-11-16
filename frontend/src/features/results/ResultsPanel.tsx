@@ -34,6 +34,7 @@ type PanelProps = {
   onPause: () => void;
   onResume: () => void;
   onCancel: () => void;
+  onShowProgress: () => void;
   onOpenSettings: () => void;
   canStart: boolean;
 };
@@ -59,7 +60,8 @@ export function ResultsPanel(props: PanelProps) {
       <button className="button primary run-action" type="button" onClick={paused ? props.onResume : props.onRun} disabled={!paused && !props.canStart}>
         {title}
       </button>
-      <RunControls run={run} pausedForYou={props.pausedForYou} showResume={false} onPause={props.onPause} onResume={props.onResume} onCancel={props.onCancel} />
+      <RunControls run={run} pausedForYou={props.pausedForYou} showResume={false} onPause={props.onPause} onResume={props.onResume} onCancel={props.onCancel}
+        onShowProgress={props.onShowProgress} />
       <button className="button quiet settings-link" type="button" onClick={props.onOpenSettings}>
         {settingsSummary(props.options)} · Change
       </button>

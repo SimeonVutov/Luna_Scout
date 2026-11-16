@@ -1,6 +1,7 @@
 import type { RunStatus, SimulationOptions, Site } from "../../api/types";
 import { Icon } from "../../Icon";
 import { RunControls } from "../results/RunControls";
+import { runShare } from "../progress/progressModel";
 import { isActive } from "../results/useScience";
 import { coordinatesLabel } from "../sites/referenceSites";
 import { slotColor, slotLabel, slots } from "./slots";
@@ -22,6 +23,7 @@ type PickerProps = {
   onPause: (slot: Slot) => void;
   onResume: (slot: Slot) => void;
   onCancel: (slot: Slot) => void;
+  onShowProgress: () => void;
   onOpenSettings: () => void;
 };
 
@@ -35,7 +37,7 @@ function progress(run: RunStatus | null) {
   if (run.stage === "complete") return { text: "Complete", value: 1 };
   if (isActive(run)) {
     const text = run.stage === "queued" ? "Queued for worker" : `${run.ready_indices.length} of ${run.total_frames} snapshots ready`;
-    return { text, value: run.completed_samples / Math.max(1, run.total_samples) };
+    return { text, value: runShare(run) };
   }
   return null;
 }
@@ -70,7 +72,8 @@ export function ComparePicker(props: PickerProps) {
             <span>{state.text}</span>
           </div>}
           <RunControls run={runs[slot]} pausedForYou={props.pausedForYou[slot]}
-            onPause={() => props.onPause(slot)} onResume={() => props.onResume(slot)} onCancel={() => props.onCancel(slot)} />
+            onPause={() => props.onPause(slot)} onResume={() => props.onResume(slot)} onCancel={() => props.onCancel(slot)}
+            onShowProgress={props.onShowProgress} />
         </div>;
       })}
     </div>
