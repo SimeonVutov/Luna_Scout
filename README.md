@@ -14,7 +14,7 @@ The animation above is the whole 84-second tutorial. **[Open it as a full-qualit
 
 1. **Choose the dates.** The Sun and Earth move, so every date gives different light and contact.
 2. **Add sites.** Pick NASA's candidate sites from the reference list, or click the map to add your own.
-3. **Run the simulation.** Sun and Earth positions come from JPL Horizons, and shadows are traced over every point of the site.
+3. **Run the simulation.** Sun and Earth positions come from JPL's DE440 ephemeris, and shadows are traced over every point of the site.
 4. **Play through the day.** The ground is coloured by how much of the Sun each point sees.
 5. **See why.** **Sun rays** and **Earth rays** show which points see the Sun and Earth and which ridge blocks them. **Stand at site** shows the horizon from the ground.
 6. **Switch layers.** Earth radio coverage, the best spots over the dates, and NASA's long-term maps.
@@ -34,7 +34,7 @@ The tools that hold this data (NASA's Quickmap and Moon Trek, JPL Horizons) are 
 | | |
 |---|---|
 | **Terrain** | NASA LOLA elevation models: 5 m around ten candidate sites, 80 m inside 80°S and 240 m out to 60°S |
-| **Sun and Earth** | NASA JPL Horizons vectors, rotated into the lunar frame with NAIF SPICE |
+| **Sun and Earth** | JPL DE440 ephemeris computed with NASA NAIF SPICE, checked monthly against JPL Horizons |
 | **Physics** | Finite Sun disk, curved Moon, terrain shadows, Earth eclipses, no atmosphere |
 | **Ice and temperature** | NASA Diviner model of temperatures and where ice would be stable, per site |
 | **Imagery** | NASA Moon Trek LROC WAC and NAC mosaics |
@@ -44,7 +44,7 @@ The tools that hold this data (NASA's Quickmap and Moon Trek, JPL Horizons) are 
 
 ### Explore a site in 3D
 
-The application opens on the Moon in 3D. The Sun and Earth sit where JPL Horizons puts them, and the terrain refines as you zoom from the whole globe down to individual rims and craters near the south pole. The Moon stays fixed and the sky moves around it, so playing the timeline never spins the scene.
+The application opens on the Moon in 3D. The Sun and Earth sit where JPL's ephemeris puts them, and the terrain refines as you zoom from the whole globe down to individual rims and craters near the south pole. The Moon stays fixed and the sky moves around it, so playing the timeline never spins the scene.
 
 Pick a site from NASA's candidate list or click anywhere between 60°S and 90°S to add your own, then press play. The map shows what each part of the site sees at the chosen time.
 
@@ -113,14 +113,12 @@ Open three terminals in the repository root.
 cd backend
 uv sync --locked
 uv run --locked lunascout-science fetch-data
-export LUNASCOUT_HORIZONS_CONTACT='you@example.org'   # identifies you to JPL
 uv run --locked lunascout-worker
 ```
 
 ```sh
-# 2 · API (also set the same contact variable: the 3D view asks Horizons for Sun and Earth positions)
+# 2 · API
 cd backend
-export LUNASCOUT_HORIZONS_CONTACT='you@example.org'
 uv run --locked uvicorn lunascout.api.main:app --port 8000
 ```
 
@@ -133,7 +131,7 @@ npm run dev
 
 Open the URL Vite prints, usually <http://localhost:5173>. The API documentation is at <http://localhost:8000/docs>.
 
-To keep NASA data somewhere else, set `LUNASCOUT_DATA_DIR` to the same absolute path in terminals 1 and 2. Use your own address for the Horizons contact; JPL asks automated clients to identify themselves.
+To keep NASA data somewhere else, set `LUNASCOUT_DATA_DIR` to the same absolute path in terminals 1 and 2. No network access is needed after `fetch-data`: the Sun and Earth are computed locally.
 
 ## Hosting
 
@@ -145,7 +143,7 @@ The [video tutorial](#video-tutorial) shows the usual steps. A few details it do
 
 **Dates are UTC.** The playhead's time is computed first after **Run simulation**, so there is something to look at immediately.
 
-**One timeline for every site.** Changing the date range starts a simulation for all saved sites. Only the missing times are computed, because results stored for the same site and settings are reused, and narrowing the range deletes nothing. Long ranges are limited by how fast JPL Horizons answers: a year at 15-minute sampling needs about 2,200 requests, sent one at a time. Choose a coarser **Sample every** in Settings for ranges longer than a few months.
+**One timeline for every site.** Changing the date range starts a simulation for all saved sites. Only the missing times are computed, because results stored for the same site and settings are reused, and narrowing the range deletes nothing. Long ranges are limited by computing time on the server: choose a coarser **Sample every** in Settings for ranges longer than a few months.
 
 **Activity menu.** It shows whether the worker and API are running, what the worker is doing, and every recent simulation with its progress.
 
@@ -156,7 +154,7 @@ The first run at a new site builds a terrain horizon map, which takes about a mi
 ## How it works
 
 ```
-JPL Horizons ──► SPICE (UTC→TDB, ICRF→lunar frame) ──┐
+JPL DE440 ──► SPICE (UTC→TDB, ICRF→lunar frame) ─────┐
                                                      ├──► ray tracing per grid point ──► snapshots ──► API ──► website
 NASA LOLA DEMs ──► curved triangulated terrain ──────┘      (finite Sun disk,          (SQLite +       (REST + SSE)
                    └──► horizon map per point (cached)       Earth eclipse)             NumPy files)
@@ -165,7 +163,7 @@ NASA LOLA DEMs ──► curved triangulated terrain ──────┘      
 - **Terrain** from several LOLA resolutions is combined into one curved, triangulated surface, with the grids stitched so no false cliff appears where they meet.
 - **Horizon maps.** For every point of a site the exact terrain horizon is computed once and cached. Rays far from the skyline are classified by lookup, and rays near it are traced exactly, so results equal tracing every ray but run much faster.
 - **Sun and Earth** are sampled as disks with equal-solid-angle rays (37 for the Sun), so partial shadow and partial Earth views are resolved. Earth can eclipse the Sun.
-- **Time.** Horizons states, with light time and aberration, are rotated into the Moon's own frame with SPICE kernels, which accounts for the Moon's orbit and libration. The Moon has no atmosphere, so the horizon is the terrain.
+- **Time.** SPICE computes the Sun and Earth from JPL's DE440 ephemeris, with light time and aberration, and rotates them into the Moon's own frame, which accounts for the Moon's orbit and libration. The Moon has no atmosphere, so the horizon is the terrain.
 - **Events.** Sunrise, sunset, Earthrise and Earthset at the site centre are refined by bisection to about one second.
 - **Per-point statistics.** Each saved snapshot is combined into every point's longest day, longest darkness and share of time lit and with Earth in view. These drive the best-spot layers and the whole-site comparison.
 - **Runs** are content-addressed and shared between date ranges, so a run is never computed twice.
@@ -176,7 +174,7 @@ The 3D view streams LOLA elevation as tiles on the same grid as the NASA photos,
 
 | Folder | Responsibility |
 |---|---|
-| `backend/lunascout/ephemeris` | Horizons requests, response cache, frame rotation |
+| `backend/lunascout/ephemeris` | Sun and Earth positions with SPICE, and the monthly check against JPL Horizons |
 | `backend/lunascout/terrain` | DEM loading, ray tracer, horizon maps, elevation tiles, NASA long-term maps |
 | `backend/lunascout/simulation` | Site grid, irradiance, Earth visibility, event windows, per-point statistics |
 | `backend/lunascout/jobs` | Run queue, worker, time integration |
@@ -225,7 +223,7 @@ All data comes from NASA.
 - [LOLA 5 m south-pole site DEMs](https://pgda.gsfc.nasa.gov/products/78) (Barker et al. 2021) and [LOLA regional DEMs](https://pgda.gsfc.nasa.gov/products/90)
 - [Lunar polar illumination, Earth visibility and sky visibility maps](https://pgda.gsfc.nasa.gov/products/69) (NASA Goddard PGDA)
 - [Diviner Polar Resource Product](https://ode.rsl.wustl.edu/moon/pagehelp/Content/Missions_Instruments/LRO/DIVINER/PRP.htm) (NASA PDS): modelled temperatures and ice-stability depth for the south pole. Its mesh is built on Kaguya (JAXA) topography.
-- [JPL Horizons](https://ssd-api.jpl.nasa.gov/doc/horizons.html) and [NAIF SPICE kernels](https://naif.jpl.nasa.gov/naif/data.html)
+- [NAIF SPICE kernels](https://naif.jpl.nasa.gov/naif/data.html), including JPL's DE440 planetary ephemeris, and [JPL Horizons](https://ssd-api.jpl.nasa.gov/doc/horizons.html) for the monthly cross-check
 - [NASA Moon Trek](https://trek.nasa.gov/moon/), LROC WAC and NAC imagery
 - Reference sites: [NASA Lunar Surface Data Book](https://ntrs.nasa.gov/citations/20230007818), Table A2-2
 

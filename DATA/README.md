@@ -6,26 +6,25 @@ This folder holds the NASA inputs, the caches and the simulation outputs. `uv ru
 
 | Path | What | Source |
 |---|---|---|
-| `raw/spice/` | `naif0012.tls` (leap seconds), `moon_de440_250416.tf` + `moon_pa_de440_200625.bpc` (lunar orientation) | NASA NAIF |
+| `raw/spice/` | `naif0012.tls` (leap seconds), `moon_de440_250416.tf` + `moon_pa_de440_200625.bpc` (lunar orientation), `de440s.bsp` (JPL DE440 positions of the Sun, Earth and Moon, 1849–2150) | NASA NAIF |
 | `raw/terrain/LDEM_60S_240MPP_ADJ.TIF` | 240 m LOLA, 60°S–90°S: far-field horizon | NASA Goddard PGDA |
 | `raw/terrain/LDEM_80S_80MPP_ADJ.TIF` | 80 m LOLA, used within about 120 km of a site | NASA Goddard PGDA |
 | `raw/terrain/*_final_adj_5mpp_surf.tif` | 5 m LOLA for 10 candidate sites (below) | NASA Goddard PGDA |
-| `cache/horizons.sqlite3` | Validated JPL Horizons replies, reused instead of requested again | JPL Horizons |
 | `cache/horizons/` | Terrain horizon maps, one per site, grid and receiver height | computed |
 | `runs/` | Run queue (`queue.sqlite3`) and per-timestamp result grids | computed |
+| `logs/ephemeris-check.log` | One line per `check-ephemeris` run: the largest SPICE–Horizons difference | computed |
 
 The 5 m sites are Connecting Ridge (`Site01`), Shackleton Rim (`Site04`), Nobile Rim 1 (`Site06`), Peak near Shackleton (`Site07`), de Gerlache Rim (`Site11`), Leibnitz Beta Plateau (`Site20`), Malapert Massif (`Site23`), Haworth, Shoemaker, and Nobile Rim 2 (`DM2`).
 
 ## Key decisions
 
-### Sun and Earth positions: JPL Horizons and SPICE
+### Sun and Earth positions: SPICE with JPL DE440
 
-- Horizons provides Moon-centred ICRF vectors for the Sun (10) and Earth (399), in batches of 32 epochs.
-- SPICE converts UTC to TDB and rotates the vectors into `MOON_ME_DE440_ME421`. That frame is within about 0.5 m of the DE421 frame the DEMs use.
+- NAIF SPICE computes Moon-centred positions of the Sun and Earth from JPL's DE440 ephemeris (`de440s.bsp`), converts UTC to TDB, and rotates them into `MOON_ME_DE440_ME421`. That frame is within about 0.5 m of the DE421 frame the DEMs use.
 - Lunar libration comes from the time-varying orientation kernel, so no separate libration model is needed.
 - Light-time and aberration are applied at the Moon's centre (`LT+S`). The error this introduces at a surface site is below 0.003″.
-- **Why Horizons:** it is NASA's authoritative ephemeris service, and every reply is cached with its checksum for reproducibility.
-- **Transient failures:** network errors and 5xx replies are retried after 15, 60 and 180 s. Samples that were already computed are kept, so a failed run resumes where it stopped.
+- **Why SPICE, not live Horizons requests:** positions are computed on the server in microseconds, for any date from 1849 to 2150, with no network or rate limit. JPL Horizons serves the same ephemeris family (it reports DE441). Over 2026–2028 the two agree to within 35 m for the Sun and 5 m for Earth, about 0.00005″ and 0.0025″ seen from the Moon. In a test over 10 snapshots at two sites, no point's result changed.
+- **Monthly check:** `uv run lunascout-science check-ephemeris` compares SPICE with Horizons at 12 epochs over the next 60 days and appends the largest difference to `logs/ephemeris-check.log`. It exits with code 1, and logs a warning, if a difference exceeds 1 km or Horizons cannot be reached. It needs `LUNASCOUT_HORIZONS_CONTACT`, which JPL asks automated clients to set; nothing else uses Horizons.
 
 ### Terrain: curved, triangulated, multi-resolution
 
@@ -75,7 +74,7 @@ Maps are cached in `cache/horizons/`. The cache key covers the terrain checksums
 ### Time
 
 - Area metrics are sampled at the integration cadence (15 min by default) and integrated with trapezoids, split at UTC midnights.
-- Sun and Earth windows at the site centre are scanned every minute between Horizons samples, then refined by bisection to about 1 s. Interpolating positions over a 15-minute step introduces an error below 0.0001°.
+- Sun and Earth windows at the site centre are scanned every minute between ephemeris samples, then refined by bisection to about 1 s. Interpolating positions over a 15-minute step introduces an error below 0.0001°.
 
 ## Run API
 
@@ -86,9 +85,9 @@ Maps are cached in `cache/horizons/`. The cache key covers the terrain checksums
 | `GET /api/runs/events?run_id=…` | Live progress (server-sent events) |
 | `GET /api/runs/{id}/snapshots/{index}` | One hour's metrics, sunlight grid and Earth line-of-sight grid (fraction of Earth's disk seen from mast height per point; absent before model revision 5) |
 | `GET /api/runs/{id}/series` | Sun and Earth angles and metrics per published hour |
-| `GET /api/runs/{id}/provenance` | Data checksums and Horizons reply digests |
+| `GET /api/runs/{id}/provenance` | Data and kernel checksums, and the ephemeris used |
 | `GET /api/terrain/tiles/{level}/{row}/{column}` | LOLA heights of one tile (65×65 nodes plus a one-node border, little-endian float32, north to south) on the same south-polar tile grid as NASA Moon Trek imagery. Levels 0–13 reach 4 m spacing. Saved under `cache/terrain_tiles`. |
-| `GET /api/sky?start_utc&end_utc&integration_minutes&index` | Sun and Earth positions (Moon-fixed metres) for the Horizons batch holding that sample. Uses the same batches as simulation runs, so replies are shared. |
+| `GET /api/sky?start_utc&end_utc&integration_minutes&index` | Sun and Earth positions (Moon-fixed metres) for the batch of 32 samples holding that sample, the same batches simulation runs use. |
 | `POST /api/terrain/context?grid_spacing_m=` | NASA's long-term maps over a site on the simulation's grid, with area-weighted means: average sunlight and Earth visibility (18.6 years), permanent-shadow share and open sky. Read from `raw/context` (60 m inside 85°S, 240 m to 65°S). |
 | `POST /api/terrain/ice` | Diviner's modelled temperatures and ice-stability depth for the cells inside a site (about 500 m cells, 80°S to the pole): annual mean and maximum temperature, share of the site with stable ice, share stable at the surface, shallowest and mean buried depth. `summary` is null outside the table. Read from `raw/context/diviner_prp_south.npz`. |
 | `GET /api/runs/{id}/site-map` | For a finished run: every point's longest day and darkness, share of the period lit and with Earth in view, the good-spot standards, and whole-site summaries (typical, best and worst longest day and darkness; area good for Sun, Earth contact and both). Built from the saved snapshots (each taken to hold for its whole interval) and cached as `site_map.npz` in the run's folder. |
