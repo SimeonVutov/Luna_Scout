@@ -24,6 +24,7 @@ _RATE_LIMITS_PER_MINUTE = {
     "POST /api/terrain/rays": 20,
     "POST /api/terrain/insight": 12,
     "POST /api/terrain/context": 30,
+    "POST /api/terrain/ice": 60,
 }
 
 

@@ -24,6 +24,7 @@ from .ephemeris.horizons import (
 from .simulation.engine import SimulationSettings, Snapshot, calculate_snapshot
 from .simulation.frames import MOON_RADIUS_M, SiteFootprint
 from .terrain.context_maps import CONTEXT_FILE_NAMES, ILLUMINATION_URL
+from .terrain.diviner import COMPACT_NAME, PRP_URL, TABLE_NAME, build_compact_table
 from .terrain.model import (
     LOCAL_DEM_NAMES,
     LOCAL_DEM_SITES,
@@ -160,22 +161,41 @@ def _fetch_data(data_dir: Path) -> None:
     )
 
     for path, url in inputs:
-        if path.is_file():
-            continue
+        if not path.is_file():
+            _download(url, path)
 
-        path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Downloading {path.name}", file=sys.stderr, flush=True)
-        try:
-            with TemporaryDirectory(dir=path.parent, prefix=f".{path.name}-") as stage:
-                staged_path = Path(stage) / path.name
-                with urlopen(url, timeout=60) as response, staged_path.open("wb") as download:
-                    shutil.copyfileobj(response, download, length=1024 * 1024)
-                    expected_size = response.headers.get("Content-Length")
-                    if expected_size and download.tell() != int(expected_size):
-                        raise OSError(f"{path.name} ended before the expected file size.")
-                staged_path.replace(path)
-        except (URLError, TimeoutError) as exc:
-            raise OSError(f"Could not download {path.name} from NASA.") from exc
+    _fetch_ice_table(data_dir)
+
+
+def _fetch_ice_table(data_dir: Path) -> None:
+    """Diviner's modelled temperatures and ice depths: a 605 MB table cut down to a small file."""
+    context_dir = data_dir / "raw" / "context"
+    compact_path = context_dir / COMPACT_NAME
+    if compact_path.is_file():
+        return
+
+    table_path = context_dir / TABLE_NAME
+    _download(PRP_URL, table_path)
+    print(f"Reducing {TABLE_NAME}", file=sys.stderr, flush=True)
+    build_compact_table(table_path, compact_path)
+    # The text table is only an intermediate; the compact file holds what the server needs.
+    table_path.unlink()
+
+
+def _download(url: str, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Downloading {path.name}", file=sys.stderr, flush=True)
+    try:
+        with TemporaryDirectory(dir=path.parent, prefix=f".{path.name}-") as stage:
+            staged_path = Path(stage) / path.name
+            with urlopen(url, timeout=60) as response, staged_path.open("wb") as download:
+                shutil.copyfileobj(response, download, length=1024 * 1024)
+                expected_size = response.headers.get("Content-Length")
+                if expected_size and download.tell() != int(expected_size):
+                    raise OSError(f"{path.name} ended before the expected file size.")
+            staged_path.replace(path)
+    except (URLError, TimeoutError) as exc:
+        raise OSError(f"Could not download {path.name} from NASA.") from exc
 
 
 def _ephemeris_report(series: Ephemerides) -> dict[str, object]:

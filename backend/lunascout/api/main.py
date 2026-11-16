@@ -10,6 +10,7 @@ from . import site_store
 from .models import Site, SiteSpec
 from .public import PublicMode, RateLimitMiddleware, default_limiter
 from .context import context_router
+from .ice import ice_router
 from .science import science_router
 from .site_map import site_map_router
 from .space import space_router
@@ -35,6 +36,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         app.add_middleware(RateLimitMiddleware, limiter=default_limiter())
     app.include_router(science_router(catalog_path, queue, public))
     app.include_router(context_router(catalog_path))
+    app.include_router(ice_router(catalog_path))
     app.include_router(site_map_router(queue))
     app.include_router(space_router(catalog_path, queue))
 
