@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from lunascout.ephemeris.horizons import EphemerisSample
+from lunascout.ephemeris.states import EphemerisSample
 from lunascout.jobs.metrics import Reading, integrate
 from lunascout.jobs.plan import RunPlan
 from lunascout.jobs.scheduler import RunQueue, WorkBatch

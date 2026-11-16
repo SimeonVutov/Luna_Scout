@@ -10,7 +10,7 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
-from ..ephemeris.horizons import EphemerisSample
+from ..ephemeris.states import EphemerisSample
 from ..terrain import mesh
 from ..terrain.model import Terrain
 from .engine import EARTH_DISK_SAMPLES, Bounds, CentreInstruments, PreparedSite

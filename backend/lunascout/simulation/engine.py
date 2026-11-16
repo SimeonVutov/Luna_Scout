@@ -8,7 +8,7 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
-from ..ephemeris.horizons import EphemerisSample
+from ..ephemeris.states import EphemerisSample
 from ..terrain import mesh
 from ..terrain.horizon import HorizonMap
 from ..terrain.model import Terrain

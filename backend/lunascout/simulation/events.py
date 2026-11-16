@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 
-from ..ephemeris.horizons import EphemerisSample
+from ..ephemeris.states import EphemerisSample
 from ..terrain import mesh
 from .engine import PreparedSite, Visibility
 from .frames import FloatArray

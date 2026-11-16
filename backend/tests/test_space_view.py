@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 import rasterio
 
-from lunascout.ephemeris.horizons import EphemerisSample
+from lunascout.ephemeris.states import EphemerisSample
 from lunascout.simulation.engine import (
     SimulationSettings,
     place_centre_instruments,

@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from lunascout.ephemeris.horizons import EphemerisSample
+from lunascout.ephemeris.states import EphemerisSample
 from lunascout.simulation.engine import SimulationSettings, prepare_site, trace_snapshot
 from lunascout.simulation.insight import skyline_degrees
 from lunascout.simulation.events import visibility_windows
