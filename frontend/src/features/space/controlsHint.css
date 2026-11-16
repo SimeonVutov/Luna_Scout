@@ -1,0 +1,50 @@
+.controls-hint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.controls-hint li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px 4px 7px;
+  font-size: .7rem;
+  color: #c3cbd5;
+  border: 1px solid #ffffff14;
+  border-radius: 999px;
+  background: #0d1117b8;
+  backdrop-filter: blur(6px);
+}
+
+.mouse-glyph {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.mouse-body,
+.mouse-line {
+  fill: none;
+  stroke: #8f99a6;
+  stroke-width: 1.1;
+}
+
+.mouse-lit {
+  fill: var(--accent);
+}
+
+.mouse-count {
+  font-size: 7px;
+  font-weight: 700;
+  fill: var(--accent);
+}
+
+/* Mouse instructions mean nothing on a touch screen. */
+@media (hover: none) {
+  .controls-hint {
+    display: none;
+  }
+}

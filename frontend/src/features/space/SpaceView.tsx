@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ControlsHint } from "./ControlsHint";
 import type { RayFan, RunStatus, SimulationOptions, Site, SiteContext, SiteMap, SunlightGrid, TimeRange } from "../../api/types";
 import { bestSpotCanvas, contextCanvas, earthCanvas, sunlightCanvas } from "../globe/sunlightOverlay";
 import { hasEarthShare } from "../results/bestSpotColors";
@@ -210,8 +211,7 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
       <div className="space-bottom">
         {problem && <p role="alert">{problem}</p>}
         {!sample && <p role="status">{sky.error ?? "Loading the Sun and Earth positions…"}</p>}
-        <p>{standing ? "Drag to look around · Scroll to zoom · Click Sun or Earth to face it"
-          : "Drag to move · Right-drag to turn and tilt · Scroll to zoom · Double-click to centre"}</p>
+        <ControlsHint standingOnSurface={standing} />
       </div>
       <div className="map-credits">
         <a className="map-credit" href="https://trek.nasa.gov/moon/" target="_blank" rel="noreferrer">NASA Moon Trek · LROC WAC / NAC</a>
