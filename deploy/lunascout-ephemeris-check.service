@@ -1,0 +1,13 @@
+[Unit]
+Description=LunaScout monthly check of SPICE positions against JPL Horizons
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=lunascout
+WorkingDirectory=/srv/lunascout/app/backend
+EnvironmentFile=/etc/lunascout.env
+# Appends one line to $LUNASCOUT_DATA_DIR/logs/ephemeris-check.log and fails on a difference over 1 km.
+ExecStart=/srv/lunascout/app/backend/.venv/bin/lunascout-science check-ephemeris
+Nice=10

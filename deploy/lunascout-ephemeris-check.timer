@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the LunaScout ephemeris check once a month
+
+[Timer]
+OnCalendar=monthly
+# Catch up after the server was off at the scheduled time.
+Persistent=true
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target

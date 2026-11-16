@@ -7,7 +7,7 @@ This puts LunaScout on a small Google Cloud server at your own domain, using the
 ## Before you start
 
 - Push the repository to GitHub and make it public. The server downloads the code from there.
-- Have an email address ready for JPL Horizons (it identifies the server to JPL). It is stored only on the server, never in the repository.
+- Have an email address ready for JPL Horizons. The application computes the Sun and Earth itself; once a month a check compares them with Horizons, and JPL asks automated clients to identify themselves. The address is stored only on the server, never in the repository.
 
 ## 1. Google Cloud account
 
@@ -68,6 +68,16 @@ When it finishes, open <https://luna-scout.online>. The site is served over HTTP
 journalctl -u lunascout-api -n 50
 journalctl -u lunascout-worker -n 50
 journalctl -u caddy -n 50
+```
+
+## Monthly ephemeris check
+
+A timer compares the application's Sun and Earth positions with JPL Horizons once a month. Each run adds one line to `/srv/lunascout/DATA/logs/ephemeris-check.log`, and a difference over 1 km, or a failure to reach Horizons, marks the run as failed. Nothing appears on the website. To read the log, or run the check now:
+
+```sh
+sudo tail /srv/lunascout/DATA/logs/ephemeris-check.log
+sudo systemctl start lunascout-ephemeris-check
+systemctl list-timers lunascout-ephemeris-check.timer
 ```
 
 ## Updating

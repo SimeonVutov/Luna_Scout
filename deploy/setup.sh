@@ -3,8 +3,9 @@
 #
 #   sudo ./deploy/setup.sh luna-scout.online you@example.org
 #
-# The first argument is the domain, the second the contact address sent to JPL Horizons. The
-# address is kept in /etc/lunascout.env on this server and is not part of the repository.
+# The first argument is the domain, the second the contact address sent to JPL Horizons by the
+# monthly ephemeris check (the application itself computes positions locally). The address is
+# kept in /etc/lunascout.env on this server and is not part of the repository.
 set -euo pipefail
 
 DOMAIN="${1:?Usage: sudo ./deploy/setup.sh <domain> <contact-email>}"
@@ -82,11 +83,13 @@ chmod 640 /etc/lunascout.env
 chown root:"$APP_USER" /etc/lunascout.env
 
 echo "==> Services"
-cp "$APP/deploy/lunascout-api.service" "$APP/deploy/lunascout-worker.service" /etc/systemd/system/
+cp "$APP/deploy/lunascout-api.service" "$APP/deploy/lunascout-worker.service" \
+  "$APP/deploy/lunascout-ephemeris-check.service" "$APP/deploy/lunascout-ephemeris-check.timer" /etc/systemd/system/
 sed "s/DOMAIN/$DOMAIN/g" "$APP/deploy/Caddyfile" > /etc/caddy/Caddyfile
 systemctl daemon-reload
 systemctl enable --now lunascout-api lunascout-worker
 systemctl restart lunascout-api lunascout-worker
+systemctl enable --now lunascout-ephemeris-check.timer
 systemctl enable caddy
 systemctl restart caddy
 
