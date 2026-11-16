@@ -1,0 +1,42 @@
+@keyframes run-dialog-in {
+  from { opacity: 0; transform: translate(-50%, 10px) scale(.98); }
+}
+
+@keyframes run-pill-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+}
+
+@keyframes stage-sheen {
+  from { background-position: 160% 0, 0 0; }
+  to { background-position: -60% 0, 0 0; }
+}
+
+@keyframes stage-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes run-pop {
+  0% { transform: scale(.3); opacity: 0; }
+  70% { transform: scale(1.15); opacity: 1; }
+}
+
+@keyframes run-glow {
+  0% { filter: drop-shadow(0 0 0 #8fd9b500); }
+  40% { filter: drop-shadow(0 0 8px #8fd9b5aa); }
+  100% { filter: drop-shadow(0 0 0 #8fd9b500); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-dialog,
+  .run-pill,
+  .stage-fill,
+  .stage-mark,
+  .stage-icon,
+  .run-pill-icon,
+  .run-pill-line,
+  .run-card .run-card-percent,
+  .run-card.complete .stage-bar {
+    animation: none;
+    transition: none;
+  }
+}
