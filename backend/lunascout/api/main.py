@@ -1,10 +1,13 @@
+import logging
 import os
+from threading import Thread
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.gzip import GZipMiddleware
 
+from ..jobs.plan import MissingScienceInputs, science_sources
 from ..jobs.scheduler import RunQueue
 from . import site_store
 from .models import Site, SiteSpec
@@ -27,6 +30,9 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     async def lifespan(_app: FastAPI):
         site_store.initialize(catalog_path)
         queue.initialize()
+        # Checksum the input files now, in the background, so the first submitted simulation
+        # does not wait for it. Missing inputs are reported when a run is submitted.
+        Thread(target=_warm_checksums, args=(catalog_path,), daemon=True).start()
         yield
 
     app = FastAPI(title="LunaScout API", version="0.1.0", lifespan=lifespan)
@@ -71,4 +77,12 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     return app
 
 
+def _warm_checksums(data_dir: Path) -> None:
+    try:
+        science_sources(data_dir)
+    except (MissingScienceInputs, OSError):
+        logging.getLogger(__name__).info("Input checksums not prepared; the data is incomplete.")
+
+
 app = create_app()
+

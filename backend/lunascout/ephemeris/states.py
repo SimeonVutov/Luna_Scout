@@ -9,10 +9,8 @@ to within 35 m for the Sun and 5 m for Earth, about 0.00005 and 0.0025 arcsecond
 the Moon, which changes no result. `lunascout-science check-ephemeris` repeats that comparison.
 """
 
-import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from functools import lru_cache
 from pathlib import Path
 from threading import Lock
 from typing import Literal
@@ -21,6 +19,7 @@ import numpy as np
 import spiceypy as spice
 from spiceypy.utils.exceptions import SpiceyError
 
+from ..checksums import file_sha256
 from ..simulation.frames import LUNAR_FRAME, FloatArray
 
 # Leap seconds, the lunar frame definition, lunar orientation, and the planetary ephemeris.
@@ -126,7 +125,7 @@ def load_ephemerides_at(
         frame=LUNAR_FRAME,
         correction=correction,
         source=EPHEMERIS_SOURCE,
-        kernels_sha256={path.name: file_sha256(path) for path in paths},
+        kernels_sha256={path.name: file_sha256(path, data_dir / "cache" / "checksums.json") for path in paths},
     )
 
 
@@ -176,14 +175,3 @@ def _as_utc(time: datetime) -> datetime:
         raise ValueError("Ephemeris timestamps need a UTC offset.")
     return time.astimezone(UTC)
 
-
-def file_sha256(path: Path) -> str:
-    """Checksum of a file, computed once per file version."""
-    details = path.stat()
-    return _checksum(path, details.st_size, details.st_mtime_ns)
-
-
-@lru_cache(maxsize=64)
-def _checksum(path: Path, _size: int, _modified_ns: int) -> str:
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()

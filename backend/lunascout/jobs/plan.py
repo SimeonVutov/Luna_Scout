@@ -2,12 +2,12 @@
 
 import hashlib
 from datetime import UTC, datetime, timedelta
-from functools import lru_cache
 from math import gcd
 from pathlib import Path
 
 from pydantic import AwareDatetime, BaseModel
 
+from ..checksums import file_sha256
 from ..ephemeris.states import BATCH_SIZE, KERNEL_NAMES
 from ..simulation.engine import SimulationSettings, grid_half_width
 from ..simulation.frames import SiteFootprint
@@ -156,16 +156,13 @@ def science_sources(data_dir: Path) -> dict[str, str]:
         )
 
     optional = [path for name in LOCAL_DEM_NAMES if (path := terrain / name).is_file()]
-    checksums = {}
-    for path in sorted(required + optional):
-        details = path.stat()
-        checksums[path.relative_to(data_dir).as_posix()] = _checksum(
-            path, details.st_size, details.st_mtime_ns
-        )
-    return checksums
+    saved = checksum_file(data_dir)
+    return {
+        path.relative_to(data_dir).as_posix(): file_sha256(path, saved)
+        for path in sorted(required + optional)
+    }
 
 
-@lru_cache(maxsize=32)
-def _checksum(path: Path, size: int, modified_ns: int) -> str:
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+def checksum_file(data_dir: Path) -> Path:
+    """Where checksums of the input files are saved between restarts."""
+    return data_dir / "cache" / "checksums.json"
