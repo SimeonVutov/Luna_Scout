@@ -241,6 +241,7 @@ export function App() {
           run={selectedRun} reading={selectedData.output.frame?.reading ?? null} series={selectedData.series} frameError={selectedData.output.error}
           submitting={submittedSites.some(science.submitting)} reconnecting={science.reconnecting} priorityError={science.priorityError}
           options={options} insight={selectedData.insight.insight} insightLoading={selectedData.insight.loading} insightError={selectedData.insight.error} ice={selectedData.ice}
+          pausedForYou={science.pausedForYou(selected)}
           onRun={() => void startRuns()} onPause={() => control(science.pause)} onResume={() => control(science.resume)}
           onCancel={() => control(science.cancel)} onOpenSettings={() => setSettingsOpen(true)} canStart={runnableSites.length > 0} />}
       </div>

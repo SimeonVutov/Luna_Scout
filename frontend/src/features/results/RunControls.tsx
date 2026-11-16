@@ -1,35 +1,39 @@
-import { useState } from "react";
 import type { RunStatus } from "../../api/types";
 import { wholePercent } from "./format";
 import { isActive } from "./useScience";
 
 type ControlProps = {
   run: RunStatus | null;
+  /** This browser paused the run, but it keeps running because another browser still wants it. */
+  pausedForYou: boolean;
   onPause: () => void;
+  onResume: () => void;
   onCancel: () => void;
 };
 
 /**
- * Pause and cancel for a site's simulation. Pausing keeps everything computed so far and the
- * main button resumes it; cancelling deletes the results, so it asks for confirmation first.
+ * Pause and cancel act on this browser's request only, so they never stop a simulation someone
+ * else is waiting for. Nothing computed is deleted: cancelling stops showing the simulation here,
+ * and its results are reused if anyone asks for these dates again.
  */
-export function RunControls({ run, onPause, onCancel }: ControlProps) {
-  const [confirming, setConfirming] = useState(false);
+export function RunControls({ run, pausedForYou, onPause, onResume, onCancel }: ControlProps) {
   const paused = run?.stage === "paused";
   if (!run || !(isActive(run) || paused)) return null;
 
-  if (confirming) {
-    return <div className="run-controls" role="group" aria-label="Confirm cancelling the simulation">
-      <span>Delete this simulation's results?</span>
-      <button className="button quiet danger" type="button" onClick={() => { setConfirming(false); onCancel(); }}>Delete results</button>
-      <button className="button quiet" type="button" onClick={() => setConfirming(false)}>Keep</button>
+  const done = run.total_samples ? run.completed_samples / run.total_samples : 0;
+  const cancel = <button className="button quiet" type="button" onClick={onCancel}>Cancel</button>;
+
+  if (pausedForYou && !paused) {
+    return <div className="run-controls" role="group" aria-label="Simulation controls">
+      <span>Paused for you. Another visitor still needs this simulation, so it keeps running.</span>
+      <button className="button quiet" type="button" onClick={onResume}>Resume</button>
+      {cancel}
     </div>;
   }
 
-  const done = run.total_samples ? run.completed_samples / run.total_samples : 0;
   return <div className="run-controls" role="group" aria-label="Simulation controls">
     {paused && <span>Paused at {wholePercent.format(done)}. Results so far stay available.</span>}
     {!paused && <button className="button quiet" type="button" onClick={onPause}>Pause</button>}
-    <button className="button quiet" type="button" onClick={() => setConfirming(true)}>Cancel</button>
+    {cancel}
   </div>;
 }

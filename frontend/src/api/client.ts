@@ -53,18 +53,18 @@ export function lookupRun(request: RunRequest, signal: AbortSignal) {
   return send<RunLookup>("/runs/lookup", "POST", request, signal);
 }
 
-/** Stop computing a run, keeping what is done. */
+/** Pause this browser's request, keeping what is done. The run continues while others want it. */
 export function pauseRun(id: string) {
   return send<RunStatus>(`/runs/${id}/pause?session=${browserSession()}`, "POST");
 }
 
 export function resumeRun(id: string) {
-  return send<RunStatus>(`/runs/${id}/resume`, "POST");
+  return send<RunStatus>(`/runs/${id}/resume?session=${browserSession()}`, "POST");
 }
 
-/** Stop a run and delete what it computed. */
+/** Withdraw this browser's request. Nothing computed is deleted; others' requests carry on. */
 export function cancelRun(id: string) {
-  return send<void>(`/runs/${id}?session=${browserSession()}`, "DELETE");
+  return send<RunStatus>(`/runs/${id}?session=${browserSession()}`, "DELETE");
 }
 
 export function runStatus(id: string, signal?: AbortSignal) {

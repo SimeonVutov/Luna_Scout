@@ -29,6 +29,7 @@ type PanelProps = {
   insightLoading: boolean;
   insightError: string | null;
   ice: IceState;
+  pausedForYou: boolean;
   onRun: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -58,7 +59,7 @@ export function ResultsPanel(props: PanelProps) {
       <button className="button primary run-action" type="button" onClick={paused ? props.onResume : props.onRun} disabled={!paused && !props.canStart}>
         {title}
       </button>
-      <RunControls run={run} onPause={props.onPause} onCancel={props.onCancel} />
+      <RunControls run={run} pausedForYou={props.pausedForYou} onPause={props.onPause} onResume={props.onResume} onCancel={props.onCancel} />
       <button className="button quiet settings-link" type="button" onClick={props.onOpenSettings}>
         {settingsSummary(props.options)} · Change
       </button>

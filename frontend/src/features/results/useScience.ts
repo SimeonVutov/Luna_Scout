@@ -45,6 +45,18 @@ function message(error: unknown) {
   return error instanceof Error ? error.message : "Could not load simulation results.";
 }
 
+/** The server's note that a watched run no longer exists. */
+function isRemoval(message: unknown): message is { run_id: string; removed: true } {
+  return typeof message === "object" && message !== null && "removed" in message && "run_id" in message
+    && typeof message.run_id === "string";
+}
+
+function without(set: ReadonlySet<string>, id: string): ReadonlySet<string> {
+  const next = new Set(set);
+  next.delete(id);
+  return next;
+}
+
 export function isActive(run: RunStatus | null | undefined) {
   return run?.stage === "queued" || run?.stage === "running";
 }
@@ -57,6 +69,8 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
   const [priorityError, setPriorityError] = useState<string | null>(null);
   // Requests already asked about, so each is looked up once per page load.
   const lookedUp = useRef(new Set<string>());
+  // Runs this browser paused that keep running because another browser still wants them.
+  const [pausedForYou, setPausedForYou] = useState<ReadonlySet<string>>(new Set());
 
   const accept = useCallback((incoming: RunStatus) => {
     setStatuses((current) => {
@@ -86,7 +100,11 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
     const stream = runEvents(activeKey.split(","));
     stream.onopen = () => setReconnecting(false);
     stream.onerror = () => setReconnecting(true);
-    stream.onmessage = (event) => accept(JSON.parse(event.data) as RunStatus);
+    stream.onmessage = (event) => {
+      const message: unknown = JSON.parse(event.data);
+      if (isRemoval(message)) forget(message.run_id);
+      else accept(message as RunStatus);
+    };
     return () => { stream.close(); setReconnecting(false); };
   }, [activeKey, accept]);
 
@@ -138,6 +156,9 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
         if (existing) {
           accept(existing);
           setIds((current) => ({ ...current, [key]: existing.run_id }));
+          // Joining an unfinished run records this browser as wanting it, so another browser
+          // pausing or cancelling it cannot stop it for this one.
+          if (existing.stage !== "complete") void run(site, range, atUtc).catch(() => undefined);
         } else if (found.reusable_samples > 0) {
           void run(site, range, atUtc).catch(() => undefined);
         }
@@ -150,15 +171,26 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
   /** Stop computing a site's run, keeping what is done. */
   async function pause(site: Site) {
     const id = ids[requestKey(site, range, options)];
-    if (id) accept(await pauseRun(id));
+    if (!id) return;
+
+    const status = await pauseRun(id);
+    accept(status);
+    // Still running means another browser wants it; it carries on for them.
+    if (isActive(status)) setPausedForYou((current) => new Set(current).add(id));
   }
 
   async function resume(site: Site) {
     const id = ids[requestKey(site, range, options)];
-    if (id) accept(await resumeRun(id));
+    if (!id) return;
+
+    accept(await resumeRun(id));
+    setPausedForYou((current) => without(current, id));
   }
 
-  /** Stop a site's run and delete what it computed. It is not restarted until asked again. */
+  /**
+   * Withdraw this browser's request and stop showing the run. Nothing is deleted: what it
+   * computed is reused if anyone asks for these dates again. It is not restarted on this page.
+   */
   async function cancel(site: Site) {
     const key = requestKey(site, range, options);
     const id = ids[key];
@@ -166,8 +198,14 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
 
     await cancelRun(id);
     lookedUp.current.add(key);
-    setIds((current) => Object.fromEntries(Object.entries(current).filter(([entry]) => entry !== key)));
+    forget(id);
+  }
+
+  /** Stop tracking a run: cancelled here, or no longer on the server. */
+  function forget(id: string) {
+    setIds((current) => Object.fromEntries(Object.entries(current).filter(([, value]) => value !== id)));
     setStatuses((current) => Object.fromEntries(Object.entries(current).filter(([entry]) => entry !== id)));
+    setPausedForYou((current) => without(current, id));
   }
 
   useEffect(() => {
@@ -180,6 +218,10 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
     pause,
     resume,
     cancel,
+    pausedForYou: (site: Site | null) => {
+      const id = site ? ids[requestKey(site, range, options)] : undefined;
+      return id !== undefined && pausedForYou.has(id);
+    },
     status: (site: Site | null) => site ? statuses[ids[requestKey(site, range, options)]] ?? null : null,
     submitting: (site: Site | null) => site ? Boolean(pending[requestKey(site, range, options)]) : false,
     reconnecting,
