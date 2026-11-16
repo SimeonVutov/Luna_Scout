@@ -63,6 +63,7 @@ The **Whole period** view turns the comparison into a scorecard, with a marker o
 - **Power and communication** for the selected dates: solar energy on the receiver, sunlit time, longest day, longest darkness, Earth visibility, longest Earth contact and longest blackout, with sunrise, sunset, Earthrise and Earthset timed to about one second at the site centre.
 - **Across the whole site**: the longest day and longest darkness of the typical point and of the best spot, and the share of the site's area that is good for Sun, good for Earth contact and good for both.
 - **Long-term and terrain**: NASA's 18.6-year averages for sunlight and Earth visibility, permanent shadow, open sky, and slope. They separate a bad day from a bad place.
+- **Ice and temperature, modelled**: for the site only, NASA Diviner's annual mean and maximum temperature, the share of the site where ice would be stable, how much is stable right at the surface, and how deep the shallowest ice lies. These are model results at about 500 m, not detected ice. Measured hydrogen (neutron instruments) is mapped too coarsely to give a number for one site, so it is left out.
 
 Two charts follow the scorecard, one for the Sun and one for Earth, each with a menu for what to plot (lit area, lit and gentle ground, irradiance, Earth disk visibility and others):
 
@@ -83,7 +84,7 @@ One **Layer** menu, on the flat map and in 3D, chooses what is drawn on the grou
 
 ## Quick start
 
-**Requirements:** Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), Node.js 22.12 or newer, and about 1.7 GB of disk space for NASA data.
+**Requirements:** Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), Node.js 22.12 or newer, and about 2 GB of disk space for NASA data (the 605 MB Diviner table is cut down to a 58 MB file during the download).
 
 Open three terminals in the repository root.
 
@@ -204,6 +205,7 @@ All data comes from NASA.
 
 - [LOLA 5 m south-pole site DEMs](https://pgda.gsfc.nasa.gov/products/78) (Barker et al. 2021) and [LOLA regional DEMs](https://pgda.gsfc.nasa.gov/products/90)
 - [Lunar polar illumination, Earth visibility and sky visibility maps](https://pgda.gsfc.nasa.gov/products/69) (NASA Goddard PGDA)
+- [Diviner Polar Resource Product](https://ode.rsl.wustl.edu/moon/pagehelp/Content/Missions_Instruments/LRO/DIVINER/PRP.htm) (NASA PDS): modelled temperatures and ice-stability depth for the south pole. Its mesh is built on Kaguya (JAXA) topography.
 - [JPL Horizons](https://ssd-api.jpl.nasa.gov/doc/horizons.html) and [NAIF SPICE kernels](https://naif.jpl.nasa.gov/naif/data.html)
 - [NASA Moon Trek](https://trek.nasa.gov/moon/), LROC WAC and NAC imagery
 - Reference sites: [NASA Lunar Surface Data Book](https://ntrs.nasa.gov/citations/20230007818), Table A2-2
