@@ -1,9 +1,10 @@
-import type { Bounds, PeriodSummary, SiteContext, SiteExtremes, SiteInsight, SiteMap } from "../../api/types";
+import type { Bounds, PeriodSummary, SiteContext, SiteExtremes, SiteIceSummary, SiteInsight, SiteMap } from "../../api/types";
 import { bound, decimal, energy, longestLabel, middle, wholePercent } from "../results/format";
+import { depthLabel, kelvin, share, shallowestIceLabel } from "../results/iceFormat";
 import type { Slot } from "./slots";
 
 /** Everything a scorecard row can read for one site. */
-export type RowData = { period: PeriodSummary | null; context: SiteContext | null; insight: SiteInsight | null; siteMap: SiteMap | null };
+export type RowData = { period: PeriodSummary | null; context: SiteContext | null; insight: SiteInsight | null; siteMap: SiteMap | null; ice: SiteIceSummary | null };
 
 export type ScoreRow = {
   label: string;
@@ -58,6 +59,10 @@ function durationRow(label: string, better: ScoreRow["better"], extremesOf: (map
   });
 }
 
+/** A row from Diviner's modelled numbers, which are neither good nor bad on their own. */
+const iceRow = (label: string, value: (ice: SiteIceSummary) => number | null, text: (ice: SiteIceSummary) => string) =>
+  placeRow(label, "none", (data) => data.ice ? value(data.ice) : null, (data) => data.ice ? text(data.ice) : "—");
+
 const areaRow = (label: string, share: (map: SiteMap) => number | null) =>
   siteRow(label, "higher", share, (map) => percent(share(map)));
 
@@ -95,6 +100,19 @@ export const scoreGroups: ScoreGroup[] = [
       areaRow("Area good for Sun", (map) => map.summary.area_good_for_sun),
       areaRow("Area good for Earth contact", (map) => map.summary.area_good_for_earth),
       areaRow("Area good for both", (map) => map.summary.area_good_for_both),
+    ],
+  },
+  {
+    title: "Ice and temperature · modelled",
+    note: () => "NASA Diviner model of the first mapping year, at about 500 m. Where ice would survive, not detected ice",
+    rows: [
+      iceRow("Annual mean temperature", (ice) => ice.mean_temperature_k, (ice) => kelvin(ice.mean_temperature_k)),
+      iceRow("Annual maximum temperature", (ice) => ice.max_temperature_k, (ice) => kelvin(ice.max_temperature_k)),
+      iceRow("Coldest spot · annual maximum", (ice) => ice.coldest_max_temperature_k, (ice) => kelvin(ice.coldest_max_temperature_k)),
+      iceRow("Area with stable ice", (ice) => ice.stable_ice_share, (ice) => share(ice.stable_ice_share)),
+      iceRow("Ice stable at the surface", (ice) => ice.surface_ice_share, (ice) => share(ice.surface_ice_share)),
+      iceRow("Shallowest ice", (ice) => ice.shallowest_ice_depth_m, shallowestIceLabel),
+      iceRow("Mean depth of buried ice", (ice) => ice.mean_buried_ice_depth_m, (ice) => depthLabel(ice.mean_buried_ice_depth_m)),
     ],
   },
   {

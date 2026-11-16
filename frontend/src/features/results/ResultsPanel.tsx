@@ -4,9 +4,11 @@ import { clockLabel, dateLabel } from "../timeline/time";
 import { decimal } from "./format";
 import { SkyChart } from "./SkyChart";
 import { SkyCloseUp } from "./SkyCloseUp";
+import { IceSection } from "./IceSection";
 import { TerrainSection } from "./TerrainSection";
 import { PeriodMetricsList, SelectedTimeMetrics } from "./SiteMetrics";
 import { isActive } from "./useScience";
+import type { IceState } from "./useSiteIce";
 import "./results.css";
 
 type PanelProps = {
@@ -25,6 +27,7 @@ type PanelProps = {
   insight: SiteInsight | null;
   insightLoading: boolean;
   insightError: string | null;
+  ice: IceState;
   onRun: () => void;
   onOpenSettings: () => void;
   canStart: boolean;
@@ -81,6 +84,11 @@ export function ResultsPanel(props: PanelProps) {
       <section className="result-section">
         <h4>Terrain</h4>
         <TerrainSection insight={props.insight} loading={props.insightLoading} error={props.insightError} />
+      </section>
+
+      <section className="result-section">
+        <h4>Ice and temperature</h4>
+        <IceSection state={props.ice} />
       </section>
 
       <SkyChart samples={series} at={at} range={range} />

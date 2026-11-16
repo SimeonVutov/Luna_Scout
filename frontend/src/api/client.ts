@@ -1,4 +1,4 @@
-import type { FramePayload, Reading, RunList, RunRequest, RunStatus, RunRays, SimulationOptions, Site, SiteContext, SiteMap, SiteInsight, SiteRays, SiteSpec, SkyBatch, TimeRange } from "./types";
+import type { FramePayload, Reading, RunList, RunRequest, RunStatus, RunRays, SimulationOptions, Site, SiteContext, SiteIce, SiteMap, SiteInsight, SiteRays, SiteSpec, SkyBatch, TimeRange } from "./types";
 
 /** A failed API call. `status` is null when the server could not be reached at all. */
 export class ApiError extends Error {
@@ -111,6 +111,11 @@ export function siteInsight(
 /** NASA's long-term maps over a site: average sunlight and Earth visibility, shadow, open sky. */
 export function siteContext(site: SiteSpec, gridSpacingM: number, signal: AbortSignal) {
   return send<SiteContext>(`/terrain/context?grid_spacing_m=${gridSpacingM}`, "POST", site, signal);
+}
+
+/** Diviner's modelled temperatures and ice-stability depth for the cells inside a site. */
+export function siteIce(site: SiteSpec, signal: AbortSignal) {
+  return send<SiteIce>("/terrain/ice", "POST", site, signal);
 }
 
 export function listRuns(signal: AbortSignal) {

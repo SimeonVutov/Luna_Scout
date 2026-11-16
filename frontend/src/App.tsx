@@ -193,8 +193,8 @@ export function App() {
           onAssign={comparison.assign} onSwap={comparison.swap} onRun={() => void startRuns()} onOpenSettings={() => setSettingsOpen(true)} />}
 
         {!single && compareView === "summary" && <CompareSummary range={range} at={instant} panes={{
-          a: { site: chosen.a, run: compareRuns.a, series: compareData.a.series, context: compareData.a.context, insight: compareData.a.insight.insight, siteMap: compareData.a.siteMap },
-          b: { site: chosen.b, run: compareRuns.b, series: compareData.b.series, context: compareData.b.context, insight: compareData.b.insight.insight, siteMap: compareData.b.siteMap },
+          a: { site: chosen.a, run: compareRuns.a, series: compareData.a.series, context: compareData.a.context, insight: compareData.a.insight.insight, siteMap: compareData.a.siteMap, ice: compareData.a.ice },
+          b: { site: chosen.b, run: compareRuns.b, series: compareData.b.series, context: compareData.b.context, insight: compareData.b.insight.insight, siteMap: compareData.b.siteMap, ice: compareData.b.ice },
         }} />}
 
         {!single && compareView === "live" && <CompareLive at={instant} view={view} range={range} timeIndex={timeIndex} options={options}
@@ -222,7 +222,7 @@ export function App() {
         {single && <ResultsPanel site={selected} at={instant} range={range} index={timeIndex}
           run={selectedRun} reading={selectedData.output.frame?.reading ?? null} series={selectedData.series} frameError={selectedData.output.error}
           submitting={submittedSites.some(science.submitting)} reconnecting={science.reconnecting} priorityError={science.priorityError}
-          options={options} insight={selectedData.insight.insight} insightLoading={selectedData.insight.loading} insightError={selectedData.insight.error}
+          options={options} insight={selectedData.insight.insight} insightLoading={selectedData.insight.loading} insightError={selectedData.insight.error} ice={selectedData.ice}
           onRun={() => void startRuns()} onOpenSettings={() => setSettingsOpen(true)} canStart={runnableSites.length > 0} />}
       </div>
 

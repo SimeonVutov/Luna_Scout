@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { PeriodSummary, Reading, RunStatus, Site, SiteContext, SiteInsight, SiteMap, TimeRange } from "../../api/types";
+import type { IceState } from "../results/useSiteIce";
 import { decimal, middle, ratio, wholePercent } from "../results/format";
 import { Legend, LineChart, PairedBars, WindowStrips, niceMax } from "./charts";
 import type { BarGroup, LineSeries, StripRow } from "./charts";
@@ -16,6 +17,7 @@ type SummaryPane = {
   context: SiteContext | null;
   insight: SiteInsight | null;
   siteMap: SiteMap | null;
+  ice: IceState;
 };
 
 /** What a chart can plot over time. Fractions are drawn on a 0–100% axis. */
@@ -90,8 +92,8 @@ export function CompareSummary({ panes, range, at }: { panes: Record<Slot, Summa
   }
 
   const data: Record<Slot, RowData> = {
-    a: { period: periods.a, context: panes.a.context, insight: panes.a.insight, siteMap: panes.a.siteMap },
-    b: { period: periods.b, context: panes.b.context, insight: panes.b.insight, siteMap: panes.b.siteMap },
+    a: { period: periods.a, context: panes.a.context, insight: panes.a.insight, siteMap: panes.a.siteMap, ice: panes.a.ice.status === "ready" ? panes.a.ice.ice : null },
+    b: { period: periods.b, context: panes.b.context, insight: panes.b.insight, siteMap: panes.b.siteMap, ice: panes.b.ice.status === "ready" ? panes.b.ice.ice : null },
   };
   const stripRows: StripRow[] = slots.flatMap((slot) => [
     { slot, kind: "Sun" as const, windows: periods[slot]?.sun_windows ?? null },
@@ -132,7 +134,7 @@ export function CompareSummary({ panes, range, at }: { panes: Record<Slot, Summa
           })}
         </tbody>)}
       </table>
-      <p className="result-note">“≥” means the state lasts past the end of the period, so a longer date range may show more. Values show a range when terrain coverage is incomplete. Long-term numbers are NASA's 18.6-year averages: they describe the place, not the dates.</p>
+      <p className="result-note">“≥” means the state lasts past the end of the period, so a longer date range may show more. Values show a range when terrain coverage is incomplete. Long-term numbers are NASA's 18.6-year averages: they describe the place, not the dates. Ice and temperature rows are Diviner model results, not detected ice.</p>
     </section>
 
     <MeasureChart title="Sun over time" measures={sunMeasures} panes={panes} start={start} end={end} at={at} gapMs={range.snapshot_minutes * 90_000} />

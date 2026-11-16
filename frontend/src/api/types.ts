@@ -233,6 +233,27 @@ export type SiteContext = {
   };
 };
 
+/** Diviner's modelled temperatures and ice-stability depth over a site. Model results, not detected ice. */
+export type SiteIceSummary = {
+  triangle_count: number;
+  resolution_m: number;
+  /** The site is smaller than one model cell, so the nearest cell stands for it. */
+  nearest_triangle_only: boolean;
+  /** Annual average temperature at 2 cm depth, in kelvin. */
+  mean_temperature_k: number | null;
+  /** Annual maximum surface temperature, in kelvin. */
+  max_temperature_k: number | null;
+  coldest_max_temperature_k: number | null;
+  /** Share of the site where ice is stable somewhere within the model's 2.9 m reach. */
+  stable_ice_share: number;
+  surface_ice_share: number;
+  /** Depth in metres; 0 means at the surface. Null when no ice is stable. */
+  shallowest_ice_depth_m: number | null;
+  mean_buried_ice_depth_m: number | null;
+};
+
+export type SiteIce = { summary: SiteIceSummary | null };
+
 export type SlopeGrid = {
   offsets_m: number[];
   inside_site: boolean[];
