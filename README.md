@@ -8,9 +8,9 @@ LunaScout is a web application built for the 2026 NASA Space Apps Challenge, *Lu
 
 ## Video tutorial
 
-[![The LunaScout video tutorial: Sun rays over Connecting Ridge in the 3D view. Click to watch.](docs/images/tutorial.jpg)](docs/tutorial.mp4)
+[![The LunaScout video tutorial, playing automatically. Click for the full-quality video.](docs/images/tutorial.gif)](docs/tutorial.mp4)
 
-**[Watch the tutorial (84 s, MP4)](docs/tutorial.mp4).** It is a screen recording of the real application, following the path a mission planner takes to choose a site:
+The animation above is the whole 84-second tutorial. **[Open it as a full-quality MP4](docs/tutorial.mp4)** for smoother motion and pause and seek controls. It is a screen recording of the real application, following the path a mission planner takes to choose a site:
 
 1. **Choose the dates.** The Sun and Earth move, so every date gives different light and contact.
 2. **Add sites.** Pick NASA's candidate sites from the reference list, or click the map to add your own.
