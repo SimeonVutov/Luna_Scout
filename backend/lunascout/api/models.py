@@ -3,6 +3,8 @@ from pydantic import AwareDatetime, BaseModel, Field, model_validator
 from ..simulation.engine import RayMethod, Receiver
 from ..simulation.frames import MAX_SITE_RADIUS_M
 
+SESSION_PATTERN = r"^[A-Za-z0-9-]{8,64}$"
+
 
 class SiteSpec(BaseModel):
     name: str = Field(min_length=1, max_length=80)
@@ -31,6 +33,9 @@ class RunSpec(BaseModel):
     collector_tilt_deg: float | None = Field(default=None, ge=0, le=90)
     collector_azimuth_deg: float = Field(default=0, ge=0, lt=360)
     ray_method: RayMethod = "horizon"
+    # A random ID a browser keeps for itself. It records who started a run, so a public server
+    # can let only that browser pause or cancel it. Not part of the run's identity.
+    session: str | None = Field(default=None, pattern=SESSION_PATTERN)
 
     @model_validator(mode="after")
     def check_request(self) -> "RunSpec":

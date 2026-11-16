@@ -21,7 +21,7 @@ from .plan import RunPlan
 
 class RunStatus(BaseModel):
     run_id: str
-    stage: Literal["queued", "running", "complete", "failed"]
+    stage: Literal["queued", "running", "paused", "complete", "failed"]
     revision: int
     plan: RunPlan
     ready_indices: list[int]
@@ -72,6 +72,19 @@ class Provenance(BaseModel):
 
 class RunRemoved(RuntimeError):
     """The run was deleted, for example with its site, while the worker was computing it."""
+
+
+class RunPaused(RuntimeError):
+    """The run was paused while the worker was computing it."""
+
+
+class RunLookup(BaseModel):
+    """What the server already has for a request, without starting anything."""
+
+    run: RunStatus | None
+    # Samples that earlier runs of the same site and settings already computed for this range.
+    reusable_samples: int
+    total_samples: int
 
 
 # A worker that has not reported for this long is treated as stopped.
@@ -159,12 +172,17 @@ class RunQueue:
         if "orphaned" not in columns:
             # Zero for a live run; otherwise when its site was deleted and its results were kept.
             db.execute("ALTER TABLE runs ADD COLUMN orphaned INTEGER NOT NULL DEFAULT 0")
+        if "owner" not in columns:
+            # The browser session that first asked for the run; on a public server only it may
+            # pause or cancel the run.
+            db.execute("ALTER TABLE runs ADD COLUMN owner TEXT")
         for row in db.execute("SELECT run_id, plan FROM runs WHERE physics_key IS NULL").fetchall():
             key = RunPlan.model_validate_json(row["plan"]).physics_key()
             db.execute("UPDATE runs SET physics_key = ? WHERE run_id = ?", (key, row["run_id"]))
 
-    def submit(self, plan: RunPlan, priority_at: datetime | None = None) -> RunStatus:
-        """Reuse identical inputs. A failed run can resume its remaining samples.
+    def submit(self, plan: RunPlan, priority_at: datetime | None = None, owner: str | None = None) -> RunStatus:
+        """Reuse identical inputs. A failed run can resume its remaining samples; a paused run stays
+        paused until it is resumed, so changing the timeline never restarts it by surprise.
 
         A new run first copies the samples that earlier runs of the same site and settings already
         computed at the same times, so a longer or shorter range only computes what is missing.
@@ -175,7 +193,7 @@ class RunQueue:
             is_new = self._find(db, run_id) is None
             db.execute(
                 """
-                INSERT INTO runs (run_id, plan, priority_index, submitted, physics_key) VALUES (?, ?, ?, ?, ?)
+                INSERT INTO runs (run_id, plan, priority_index, submitted, physics_key, owner) VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(run_id) DO UPDATE SET
                     priority_index = excluded.priority_index,
                     message = NULL,
@@ -183,7 +201,7 @@ class RunQueue:
                     revision = runs.revision + CASE WHEN runs.stage = 'failed' THEN 1 ELSE 0 END
                 WHERE runs.stage != 'complete'
                 """,
-                (run_id, plan.model_dump_json(), index, time_ns(), plan.physics_key()),
+                (run_id, plan.model_dump_json(), index, time_ns(), plan.physics_key(), owner),
             )
             db.execute("UPDATE runs SET orphaned = 0 WHERE run_id = ?", (run_id,))
             discarded: list[str] = []
@@ -200,15 +218,29 @@ class RunQueue:
         self._delete_run_files(discarded)
         return status
 
-    def _reuse_samples(self, db: sqlite3.Connection, run_id: str, plan: RunPlan) -> None:
-        """Copy matching samples, and their snapshot files, from earlier runs of the same physics."""
+    def lookup(self, plan: RunPlan) -> RunLookup:
+        """The run for this plan if it exists, and how much of it earlier runs already computed."""
+        with self._connection() as db:
+            row = self._find(db, plan.identity())
+            if row is not None:
+                status = self._status(db, row)
+                return RunLookup(run=status, reusable_samples=status.completed_samples, total_samples=status.total_samples)
+            new_indices = {new_index for _, _, new_index, _ in self._aligned_samples(db, plan.identity(), plan)}
+        return RunLookup(run=None, reusable_samples=len(new_indices), total_samples=plan.interval_count + 1)
+
+    def _aligned_samples(
+        self, db: sqlite3.Connection, run_id: str, plan: RunPlan
+    ) -> Iterator[tuple[str, int, int, sqlite3.Row]]:
+        """Samples of earlier runs with the same physics at the same times as samples of `plan`.
+
+        Yields the earlier run, its sample index, the matching index in `plan`, and the row.
+        """
         step = plan.integration_step
         siblings = db.execute(
             "SELECT run_id, plan FROM runs WHERE physics_key = ? AND run_id != ?",
             (plan.physics_key(), run_id),
         ).fetchall()
 
-        total = 0
         for sibling in siblings:
             other = RunPlan.model_validate_json(sibling["plan"])
             shift = other.start_utc - plan.start_utc
@@ -226,31 +258,36 @@ class RunQueue:
             if first > last:
                 continue
 
-            copied = 0
             rows = db.execute(
                 "SELECT sample_index, is_frame, reading FROM readings WHERE run_id = ? AND sample_index BETWEEN ? AND ?",
                 (sibling["run_id"], first, last),
             ).fetchall()
             for row in rows:
                 old_index, new_index = row["sample_index"], row["sample_index"] + offset
-                if other.at(old_index) != plan.at(new_index):
-                    continue
-                if plan.is_frame(new_index) and not (
-                    row["is_frame"]
-                    and self._link_frame(self.frame_path(sibling["run_id"], old_index), self.frame_path(run_id, new_index))
-                ):
-                    continue
+                if other.at(old_index) == plan.at(new_index):
+                    yield sibling["run_id"], old_index, new_index, row
 
-                inserted = db.execute(
-                    "INSERT OR IGNORE INTO readings VALUES (?, ?, ?, ?)",
-                    (run_id, new_index, plan.is_frame(new_index), row["reading"]),
-                )
-                copied += inserted.rowcount
+    def _reuse_samples(self, db: sqlite3.Connection, run_id: str, plan: RunPlan) -> None:
+        """Copy matching samples, and their snapshot files, from earlier runs of the same physics."""
+        copied_from: dict[str, int] = {}
+        for sibling_id, old_index, new_index, row in self._aligned_samples(db, run_id, plan):
+            if plan.is_frame(new_index) and not (
+                row["is_frame"]
+                and self._link_frame(self.frame_path(sibling_id, old_index), self.frame_path(run_id, new_index))
+            ):
+                continue
 
+            inserted = db.execute(
+                "INSERT OR IGNORE INTO readings VALUES (?, ?, ?, ?)",
+                (run_id, new_index, plan.is_frame(new_index), row["reading"]),
+            )
+            copied_from[sibling_id] = copied_from.get(sibling_id, 0) + inserted.rowcount
+
+        for sibling_id, copied in copied_from.items():
             if copied:
-                db.execute("INSERT OR REPLACE INTO reused_samples VALUES (?, ?, ?)", (run_id, sibling["run_id"], copied))
-                total += copied
+                db.execute("INSERT OR REPLACE INTO reused_samples VALUES (?, ?, ?)", (run_id, sibling_id, copied))
 
+        total = sum(copied_from.values())
         if total:
             db.execute(
                 "UPDATE runs SET completed_samples = completed_samples + ?, revision = revision + 1 WHERE run_id = ?",
@@ -342,6 +379,51 @@ class RunQueue:
     def _delete_run_files(self, run_ids: Sequence[str]) -> None:
         for run_id in run_ids:
             shutil.rmtree(self.directory / run_id, ignore_errors=True)
+
+    def owner(self, run_id: str) -> str | None:
+        """The session that first asked for the run, or None. Raises KeyError for an unknown run."""
+        with self._connection() as db:
+            row = self._find(db, run_id)
+        if row is None:
+            raise KeyError(run_id)
+        return row["owner"]
+
+    def pause(self, run_id: str) -> RunStatus | None:
+        """Stop computing a run but keep everything computed so far. None for an unknown run."""
+        return self._set_stage(run_id, "paused", from_stages=("queued", "running"))
+
+    def resume(self, run_id: str) -> RunStatus | None:
+        """Continue a paused or failed run from where it stopped. None for an unknown run."""
+        return self._set_stage(run_id, "queued", from_stages=("paused", "failed"))
+
+    def cancel(self, run_id: str) -> bool:
+        """Stop a run and delete what it computed. Snapshots shared with other runs stay theirs."""
+        with self._connection() as db:
+            removed = self._remove_runs(db, [run_id] if self._find(db, run_id) else [])
+        self._delete_run_files(removed)
+        return bool(removed)
+
+    def check_wanted(self, run_id: str) -> None:
+        """Raise if the run was deleted or paused, so long work on it can stop early."""
+        with self._connection() as db:
+            row = self._find(db, run_id)
+        if row is None:
+            raise RunRemoved(run_id)
+        if row["stage"] == "paused":
+            raise RunPaused(run_id)
+
+    def _set_stage(self, run_id: str, stage: str, *, from_stages: tuple[str, ...]) -> RunStatus | None:
+        with self._connection() as db:
+            placeholders = ", ".join("?" for _ in from_stages)
+            db.execute(
+                f"""
+                UPDATE runs SET stage = ?, message = NULL, revision = revision + 1
+                WHERE run_id = ? AND stage IN ({placeholders})
+                """,
+                (stage, run_id, *from_stages),
+            )
+            row = self._find(db, run_id)
+            return self._status(db, row) if row is not None else None
 
     def unfinished_count(self) -> int:
         """How many runs are waiting or running."""
@@ -481,8 +563,12 @@ class RunQueue:
 
     def record(self, batch: WorkBatch, index: int, reading: Reading) -> None:
         with self._connection() as db:
-            if self._find(db, batch.run_id) is None:
+            row = self._find(db, batch.run_id)
+            if row is None:
                 raise RunRemoved(batch.run_id)
+            if row["stage"] == "paused":
+                # Pausing takes effect within one sample; this sample is not saved.
+                raise RunPaused(batch.run_id)
             inserted = db.execute(
                 "INSERT OR IGNORE INTO readings VALUES (?, ?, ?, ?)",
                 (batch.run_id, index, batch.plan.is_frame(index), reading.model_dump_json()),

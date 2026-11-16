@@ -41,7 +41,7 @@ from ..terrain.horizon import (
 from ..terrain.model import TerrainError, prepare_terrain
 from .metrics import Reading, integrate
 from .plan import MODEL_REVISION, MissingScienceInputs, RunPlan, science_sources
-from .scheduler import EphemerisChunk, RunQueue, RunRemoved, WorkBatch
+from .scheduler import EphemerisChunk, RunPaused, RunQueue, RunRemoved, WorkBatch
 
 # A batch is long enough to amortise preparing a site's terrain when several sites take turns.
 _BATCH_SIZE = 96
@@ -144,6 +144,8 @@ class Worker:
 
             def report(done: int, total: int) -> None:
                 self.queue.set_activity(run_id, f"Building terrain horizons: {done * 100 // total}%")
+                # Each finished chunk is already saved, so stopping here loses nothing.
+                self.queue.check_wanted(run_id)
 
             site = plan.site
             horizons = load_or_build_horizons(
@@ -244,8 +246,11 @@ def main() -> None:
                     worker.process(batch)
                     queue.set_activity(None, None)
                 except RunRemoved:
-                    # The run was deleted with its site while this batch was computing.
+                    # The run was cancelled, or deleted with its site, while this batch was computing.
                     logger.info("Run %.12s was removed; dropping its remaining work.", batch.run_id)
+                    queue.set_activity(None, None)
+                except RunPaused:
+                    logger.info("Run %.12s was paused; its saved samples are kept.", batch.run_id)
                     queue.set_activity(None, None)
                 except (EphemerisError, TerrainError, MissingScienceInputs, ValueError) as exc:
                     # Keep the chained cause in the log; the queue message stays short for the dashboard.

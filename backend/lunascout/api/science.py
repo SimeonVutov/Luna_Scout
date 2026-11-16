@@ -14,17 +14,19 @@ from pydantic import BaseModel
 
 from ..jobs.metrics import Reading
 from ..jobs.plan import MissingScienceInputs, create_plan
-from ..jobs.scheduler import Provenance, RunList, RunQueue, RunStatus
+from ..jobs.plan import RunPlan
+from ..jobs.scheduler import Provenance, RunList, RunLookup, RunQueue, RunStatus
 from ..simulation.engine import SimulationSettings
 from ..simulation.frames import SiteFootprint
 from ..terrain.horizon import purge_horizons, site_label
 from ..terrain.model import TerrainError
 from . import site_store
 from .insight import InsightService, SiteInsight
-from .models import RunPriority, RunSpec, SiteSpec
+from .models import SESSION_PATTERN, RunPriority, RunSpec, SiteSpec
 from .public import PublicMode
 
 RunId = Annotated[str, PathParameter(pattern=r"^[a-f0-9]{64}$")]
+Session = Annotated[str | None, Query(pattern=SESSION_PATTERN)]
 logger = logging.getLogger(__name__)
 
 
@@ -57,8 +59,7 @@ def science_router(data_dir: Path, queue: RunQueue, public: PublicMode = PublicM
     router = APIRouter(prefix="/api")
     insights = InsightService(data_dir)
 
-    @router.post("/runs", status_code=202)
-    def request_run(spec: RunSpec) -> RunStatus:
+    def plan_for(spec: RunSpec) -> RunPlan:
         site = (
             site_store.get_site(data_dir, spec.site_id) if spec.site_id is not None else spec.site
         )
@@ -66,7 +67,6 @@ def science_router(data_dir: Path, queue: RunQueue, public: PublicMode = PublicM
             raise HTTPException(404, "Site not found")
 
         try:
-            footprint = SiteFootprint(site.latitude_deg, site.longitude_deg, site.radius_m)
             settings = SimulationSettings(
                 grid_spacing_m=spec.grid_spacing_m,
                 solar_disk_samples=spec.solar_disk_samples,
@@ -77,24 +77,61 @@ def science_router(data_dir: Path, queue: RunQueue, public: PublicMode = PublicM
                 collector_azimuth_deg=spec.collector_azimuth_deg,
                 ray_method=spec.ray_method,
             )
-
-            plan = create_plan(
+            return create_plan(
                 data_dir,
-                site=footprint,
+                site=SiteFootprint(site.latitude_deg, site.longitude_deg, site.radius_m),
                 settings=settings,
                 start_utc=spec.start_utc,
                 end_utc=spec.end_utc,
                 snapshot_minutes=spec.snapshot_minutes,
                 integration_minutes=spec.integration_minutes,
             )
-
-            # A run that already exists is only reused, so it never counts against the busy limit.
-            public.check_run(spec, None if queue.status(plan.identity()) else queue.unfinished_count())
-            return queue.submit(plan, spec.priority_utc)
         except MissingScienceInputs as exc:
             raise HTTPException(503, str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+
+    @router.post("/runs", status_code=202)
+    def request_run(spec: RunSpec) -> RunStatus:
+        plan = plan_for(spec)
+        try:
+            # A run that already exists is only reused, so it never counts against the busy limit.
+            public.check_run(spec, None if queue.status(plan.identity()) else queue.unfinished_count())
+            return queue.submit(plan, spec.priority_utc, owner=spec.session)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @router.post("/runs/lookup")
+    def look_up_run(spec: RunSpec) -> RunLookup:
+        """What the server already has for this request: the run itself, or samples earlier runs
+        of the same site and settings computed at these times. Starts nothing."""
+        return queue.lookup(plan_for(spec))
+
+    def check_control(run_id: str, session: str | None) -> None:
+        """On a public server, only the browser that started a run may pause or cancel it."""
+        try:
+            owner = queue.owner(run_id)
+        except KeyError as exc:
+            raise HTTPException(404, "Run not found") from exc
+        if public.enabled and (session is None or owner != session):
+            raise HTTPException(403, "Only the browser that started this simulation can pause or cancel it.")
+
+    @router.post("/runs/{run_id}/pause")
+    def pause_run(run_id: RunId, session: Session = None) -> RunStatus:
+        """Stop computing, keeping everything computed so far."""
+        check_control(run_id, session)
+        status = queue.pause(run_id)
+        if status is None:
+            raise HTTPException(404, "Run not found")
+        return status
+
+    @router.post("/runs/{run_id}/resume")
+    def resume_run(run_id: RunId) -> RunStatus:
+        """Continue a paused or failed run from where it stopped. Anyone may resume."""
+        status = queue.resume(run_id)
+        if status is None:
+            raise HTTPException(404, "Run not found")
+        return status
 
     @router.get("/runs")
     def list_runs(limit: Annotated[int, Query(ge=1, le=100)] = 30) -> RunList:
@@ -121,6 +158,13 @@ def science_router(data_dir: Path, queue: RunQueue, public: PublicMode = PublicM
         runs = queue.purge_site(latitude_deg, longitude_deg, radius_m)
         maps = purge_horizons(data_dir / "cache" / "horizons", site_label(latitude_deg, longitude_deg))
         return PurgeResult(runs_removed=runs, runs_kept=0, horizon_maps_removed=maps)
+
+    # Declared after DELETE /runs/site, so that path is not read as a run ID.
+    @router.delete("/runs/{run_id}", status_code=204)
+    def cancel_run(run_id: RunId, session: Session = None) -> None:
+        """Stop a run and delete what it computed. Snapshots shared with other runs are kept."""
+        check_control(run_id, session)
+        queue.cancel(run_id)
 
     @router.put("/runs/priority", status_code=204)
     def prioritize(spec: RunPriority) -> None:
