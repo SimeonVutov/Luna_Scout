@@ -209,14 +209,14 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
 
       <div className="space-bottom">
         {problem && <p role="alert">{problem}</p>}
-        {!sample && <p role="status">{sky.error ?? "Loading the Sun and Earth positions from JPL Horizons…"}</p>}
+        {!sample && <p role="status">{sky.error ?? "Loading the Sun and Earth positions…"}</p>}
         <p>{standing ? "Drag to look around · Scroll to zoom · Click Sun or Earth to face it"
           : "Drag to move · Right-drag to turn and tilt · Scroll to zoom · Double-click to centre"}</p>
       </div>
       <div className="map-credits">
         <a className="map-credit" href="https://trek.nasa.gov/moon/" target="_blank" rel="noreferrer">NASA Moon Trek · LROC WAC / NAC</a>
         <a className="map-credit" href="https://pgda.gsfc.nasa.gov/data/LOLA_5mpp/" target="_blank" rel="noreferrer">NASA LRO · LOLA</a>
-        <a className="map-credit" href="https://ssd.jpl.nasa.gov/horizons/" target="_blank" rel="noreferrer">JPL Horizons</a>
+        <a className="map-credit" href="https://naif.jpl.nasa.gov/naif/" target="_blank" rel="noreferrer">NASA NAIF · JPL DE440</a>
       </div>
     </>}
   </section>;

@@ -5,7 +5,7 @@ import type { SkySample, TimeRange } from "../../api/types";
 // Where the Sun and Earth are at a given time never changes, so every view shares one memory.
 const known = new Map<number, SkySample>();
 const requested = new Set<string>();
-/** Samples per Horizons batch on the API; only used to avoid asking for the same batch twice. */
+/** Samples per batch on the API; only used to avoid asking for the same batch twice. */
 const BATCH_SAMPLES = 32;
 
 function remember(samples: SkySample[]) {
@@ -13,8 +13,8 @@ function remember(samples: SkySample[]) {
 }
 
 /**
- * Moon-centred Sun and Earth positions at snapshot `timeIndex` of the timeline, from JPL
- * Horizons. Positions arrive in the same batches the simulation uses, and the next batch is
+ * Moon-centred Sun and Earth positions at snapshot `timeIndex` of the timeline, computed by the
+ * API with SPICE. Positions arrive in the same batches the simulation uses, and the next batch is
  * fetched ahead of the playhead so playing the timeline does not wait.
  */
 export function useSky(range: TimeRange, integrationMinutes: number, timeIndex: number, enabled: boolean) {
