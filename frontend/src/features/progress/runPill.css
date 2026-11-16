@@ -1,0 +1,70 @@
+/* The hidden dialog, as one line above the timeline */
+
+.run-pill {
+  --done: #8fd9b5;
+  position: fixed;
+  bottom: 158px;
+  left: 50%;
+  z-index: 15;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  overflow: hidden;
+  padding: 9px 14px 11px;
+  font-size: .74rem;
+  color: var(--text-soft);
+  border: 1px solid var(--overlay-edge);
+  border-radius: 999px;
+  background: var(--overlay);
+  box-shadow: 0 10px 30px #0009;
+  backdrop-filter: blur(10px);
+  transform: translateX(-50%);
+  animation: run-pill-in 220ms cubic-bezier(.2, .8, .2, 1);
+}
+
+.run-pill:hover {
+  border-color: var(--selected-edge);
+}
+
+.run-pill strong {
+  color: var(--text-strong);
+  font-weight: 620;
+}
+
+.run-pill span {
+  font-variant-numeric: tabular-nums;
+}
+
+.run-pill-icon {
+  width: 13px;
+  height: 13px;
+  border: 2px solid #a2e0d433;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: stage-spin 900ms linear infinite;
+}
+
+.run-pill-icon.ready {
+  display: grid;
+  place-items: center;
+  color: #10261c;
+  border: 0;
+  background: var(--done);
+  animation: run-pop 420ms cubic-bezier(.2, 1.6, .4, 1);
+}
+
+.run-pill-line {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--accent);
+  transform: scaleX(var(--fill));
+  transform-origin: left;
+  transition: transform 400ms ease-out;
+}
+
+.run-pill.ready .run-pill-line {
+  background: var(--done);
+}
