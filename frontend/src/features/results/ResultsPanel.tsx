@@ -6,6 +6,7 @@ import { SkyChart } from "./SkyChart";
 import { SkyCloseUp } from "./SkyCloseUp";
 import { IceSection } from "./IceSection";
 import { TerrainSection } from "./TerrainSection";
+import { RunControls } from "./RunControls";
 import { PeriodMetricsList, SelectedTimeMetrics } from "./SiteMetrics";
 import { isActive } from "./useScience";
 import type { IceState } from "./useSiteIce";
@@ -29,6 +30,9 @@ type PanelProps = {
   insightError: string | null;
   ice: IceState;
   onRun: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  onCancel: () => void;
   onOpenSettings: () => void;
   canStart: boolean;
 };
@@ -39,10 +43,9 @@ export function ResultsPanel(props: PanelProps) {
   const active = isActive(run);
   const completed = run?.stage === "complete";
   const retry = run?.stage === "failed";
+  const paused = run?.stage === "paused";
   const supported = site !== null && site.latitude_deg <= -60;
-  const title = !supported ? "Outside terrain coverage" : props.submitting ? "Submitting…" :
-    props.canStart ? (retry ? "Retry simulation" : "Run simulation") :
-    completed ? "Simulation complete" : queued ? "Simulation queued" : "Simulation running";
+  const title = runTitle({ supported, submitting: props.submitting, paused, canStart: props.canStart, retry, completed, queued });
 
   return <aside className="panel results-panel" aria-label="Site results">
     <div className="panel-title"><h2>Site results</h2></div>
@@ -52,9 +55,10 @@ export function ResultsPanel(props: PanelProps) {
         <p>{coordinatesLabel(site.latitude_deg, site.longitude_deg)} · {decimal.format(site.radius_m)} m radius</p>
       </div>
 
-      <button className="button primary run-action" type="button" onClick={props.onRun} disabled={!props.canStart}>
+      <button className="button primary run-action" type="button" onClick={paused ? props.onResume : props.onRun} disabled={!paused && !props.canStart}>
         {title}
       </button>
+      <RunControls run={run} onPause={props.onPause} onCancel={props.onCancel} />
       <button className="button quiet settings-link" type="button" onClick={props.onOpenSettings}>
         {settingsSummary(props.options)} · Change
       </button>
@@ -99,6 +103,26 @@ export function ResultsPanel(props: PanelProps) {
       </section>}
     </>}
   </aside>;
+}
+
+type TitleState = {
+  supported: boolean;
+  submitting: boolean;
+  paused: boolean;
+  canStart: boolean;
+  retry: boolean;
+  completed: boolean;
+  queued: boolean;
+};
+
+/** The main button's label, which also tells the run's state. */
+function runTitle(state: TitleState) {
+  if (!state.supported) return "Outside terrain coverage";
+  if (state.submitting) return "Submitting…";
+  if (state.paused) return "Resume simulation";
+  if (state.canStart) return state.retry ? "Retry simulation" : "Run simulation";
+  if (state.completed) return "Simulation complete";
+  return state.queued ? "Simulation queued" : "Simulation running";
 }
 
 const receiverShort = { vertical_tracking: "Vertical panel", terrain: "Ground", horizontal: "Flat plate" } as const;

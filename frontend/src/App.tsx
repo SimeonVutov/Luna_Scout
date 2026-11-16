@@ -95,8 +95,10 @@ export function App() {
     if (site.latitude_deg > -60) return false;
 
     const status = science.status(site);
-    return !science.submitting(site) && !isActive(status) && status?.stage !== "complete";
+    const settled = status?.stage === "complete" || status?.stage === "paused";
+    return !science.submitting(site) && !isActive(status) && !settled;
   });
+  const pausedSites = submittedSites.filter((site) => science.status(site)?.stage === "paused");
 
   const tracks: ReadyTrack[] | undefined = single
     ? (selectedRun ? [{ id: "selected", color: "var(--accent)", ready: selectedRun.ready_indices }] : undefined)
@@ -141,12 +143,25 @@ export function App() {
   async function startRuns() {
     setError(null);
 
-    const results = await Promise.allSettled(runnableSites.map((site) => science.run(site)));
+    // Paused sites continue where they stopped; the others start.
+    const targets = [...runnableSites, ...pausedSites];
+    const results = await Promise.allSettled([
+      ...runnableSites.map((site) => science.run(site)),
+      ...pausedSites.map((site) => science.resume(site)),
+    ]);
     const problems = results.flatMap((result, index) =>
-      result.status === "rejected" ? [`${runnableSites[index].name} · ${errorText(result.reason)}`] : []);
+      result.status === "rejected" ? [`${targets[index].name} · ${errorText(result.reason)}`] : []);
 
     if (problems.length) setError(problems.join(" "));
     void activity.refresh();
+  }
+
+  /** Pause, resume or cancel the selected site's simulation, reporting a refusal or failure. */
+  function control(action: (site: Site) => Promise<void>) {
+    if (!selected) return;
+
+    setError(null);
+    void action(selected).then(() => activity.refresh()).catch((problem) => setError(errorText(problem)));
   }
 
   /**
@@ -189,7 +204,7 @@ export function App() {
           onAdd={startAddingSite} onDraft={setDraft} onSave={(site) => void saveSite(site)} onSelect={catalog.select}
           onFly={(site) => setCameraTarget({ ...site })} onDelete={deleteSite} onEdit={catalog.edit}
         /> : <ComparePicker sites={sites} chosen={chosen} runs={compareRuns} options={options}
-          submitting={submittedSites.some(science.submitting)} canStart={chosen.a !== null && chosen.b !== null && runnableSites.length > 0}
+          submitting={submittedSites.some(science.submitting)} canStart={chosen.a !== null && chosen.b !== null && runnableSites.length + pausedSites.length > 0}
           onAssign={comparison.assign} onSwap={comparison.swap} onRun={() => void startRuns()} onOpenSettings={() => setSettingsOpen(true)} />}
 
         {!single && compareView === "summary" && <CompareSummary range={range} at={instant} panes={{
@@ -223,7 +238,8 @@ export function App() {
           run={selectedRun} reading={selectedData.output.frame?.reading ?? null} series={selectedData.series} frameError={selectedData.output.error}
           submitting={submittedSites.some(science.submitting)} reconnecting={science.reconnecting} priorityError={science.priorityError}
           options={options} insight={selectedData.insight.insight} insightLoading={selectedData.insight.loading} insightError={selectedData.insight.error} ice={selectedData.ice}
-          onRun={() => void startRuns()} onOpenSettings={() => setSettingsOpen(true)} canStart={runnableSites.length > 0} />}
+          onRun={() => void startRuns()} onPause={() => control(science.pause)} onResume={() => control(science.resume)}
+          onCancel={() => control(science.cancel)} onOpenSettings={() => setSettingsOpen(true)} canStart={runnableSites.length > 0} />}
       </div>
 
       <Timeline range={range} index={timeIndex} onIndex={setTimeIndex} onRange={changeRange} tracks={tracks} />

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { prioritizeRuns, runEvents, runSeries, runSnapshot, runStatus, submitRun } from "../../api/client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cancelRun, lookupRun, pauseRun, prioritizeRuns, resumeRun, runEvents, runSeries, runSnapshot, runStatus, submitRun } from "../../api/client";
 import type { FramePayload, Reading, RunStatus, SimulationOptions, Site, TimeRange } from "../../api/types";
 
 const storageKey = "lunascout.runs.v1";
@@ -55,6 +55,8 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
   const [pending, setPending] = useState<Record<string, boolean>>({});
   const [reconnecting, setReconnecting] = useState(false);
   const [priorityError, setPriorityError] = useState<string | null>(null);
+  // Requests already asked about, so each is looked up once per page load.
+  const lookedUp = useRef(new Set<string>());
 
   const accept = useCallback((incoming: RunStatus) => {
     setStatuses((current) => {
@@ -117,6 +119,56 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
     }
   }
 
+  /**
+   * For saved sites this browser has no run for, ask the server what it already has. An existing
+   * run is shown straight away. When earlier runs of the same site and settings cover part of the
+   * dates, the rest is started, so only the missing days are computed. Nothing starts for a site
+   * the server knows nothing about.
+   */
+  useEffect(() => {
+    for (const site of sites) {
+      const key = requestKey(site, range, options);
+      if (site.latitude_deg > -60 || ids[key] || lookedUp.current.has(key)) continue;
+
+      lookedUp.current.add(key);
+      const request = { ...range, ...options, site, priority_utc: atUtc };
+      void lookupRun(request, new AbortController().signal).then((found) => {
+        const existing = found.run;
+        if (existing) {
+          accept(existing);
+          setIds((current) => ({ ...current, [key]: existing.run_id }));
+        } else if (found.reusable_samples > 0) {
+          void run(site, range, atUtc).catch(() => undefined);
+        }
+      }).catch(() => lookedUp.current.delete(key));
+    }
+  // `run` and `atUtc` change on every render and do not change what a lookup finds.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sites, range, options, ids, accept]);
+
+  /** Stop computing a site's run, keeping what is done. */
+  async function pause(site: Site) {
+    const id = ids[requestKey(site, range, options)];
+    if (id) accept(await pauseRun(id));
+  }
+
+  async function resume(site: Site) {
+    const id = ids[requestKey(site, range, options)];
+    if (id) accept(await resumeRun(id));
+  }
+
+  /** Stop a site's run and delete what it computed. It is not restarted until asked again. */
+  async function cancel(site: Site) {
+    const key = requestKey(site, range, options);
+    const id = ids[key];
+    if (!id) return;
+
+    await cancelRun(id);
+    lookedUp.current.add(key);
+    setIds((current) => Object.fromEntries(Object.entries(current).filter(([entry]) => entry !== key)));
+    setStatuses((current) => Object.fromEntries(Object.entries(current).filter(([entry]) => entry !== id)));
+  }
+
   useEffect(() => {
     try { localStorage.setItem(storageKey, JSON.stringify(ids)); }
     catch { /* Runs remain usable in this tab if browser storage is unavailable. */ }
@@ -124,6 +176,9 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
 
   return {
     run,
+    pause,
+    resume,
+    cancel,
     status: (site: Site | null) => site ? statuses[ids[requestKey(site, range, options)]] ?? null : null,
     submitting: (site: Site | null) => site ? Boolean(pending[requestKey(site, range, options)]) : false,
     reconnecting,
