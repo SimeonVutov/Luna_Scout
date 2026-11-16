@@ -111,6 +111,31 @@ export type PeriodSummary = PeriodMetrics & {
   longest_earth_contact?: LongestWindow | null;
 };
 
+export type StageKey = "preparing" | "horizons" | "snapshots" | "windows";
+
+/** One stage of a run, as the server estimates it. */
+export type StageProgress = {
+  key: StageKey;
+  state: "pending" | "active" | "done" | "skipped";
+  /** Estimated seconds for the whole stage, and the share of it done. */
+  seconds: number;
+  fraction: number;
+  done_units?: number | null;
+  total_units?: number | null;
+  /** Samples earlier runs had already computed. */
+  reused_units?: number | null;
+};
+
+export type RunProgress = {
+  stages: StageProgress[];
+  /** Seconds until the run should finish, including time shared with other visitors' runs. */
+  remaining_s: number;
+  /** How the times were estimated: timed on this server, scaled from another size, or typical. */
+  basis: "measured" | "scaled" | "typical";
+  sharing_with: number;
+  waiting: boolean;
+};
+
 export type RunStatus = {
   run_id: string;
   stage: "queued" | "running" | "paused" | "complete" | "failed";
@@ -128,6 +153,8 @@ export type RunStatus = {
   period: PeriodSummary | null;
   message: string | null;
   submitted_utc?: string | null;
+  /** Stages and time left while waiting, running or paused. */
+  progress?: RunProgress | null;
 };
 
 export type WorkerStatus = {
