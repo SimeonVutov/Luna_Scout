@@ -39,6 +39,7 @@ from ..terrain.horizon import (
     site_label,
 )
 from ..terrain.model import TerrainError, prepare_terrain
+from . import performance
 from .metrics import Reading, integrate
 from .plan import MODEL_REVISION, MissingScienceInputs, RunPlan, science_sources
 from .scheduler import EphemerisChunk, RunPaused, RunQueue, RunRemoved, RunYielded, WorkBatch
@@ -68,14 +69,32 @@ class Worker:
             raise ValueError("The science inputs changed. Submit a run with the new inputs.")
 
         source_revision = tuple(sources.items())
-        self.queue.set_activity(batch.run_id, "Preparing terrain")
+        run_id = batch.run_id
+        state = self.queue.progress_state(run_id)
+        if "preparing" not in state.finished:
+            self.queue.set_progress(run_id, phase="preparing")
+        self.queue.set_activity(run_id, "Preparing terrain")
+
+        loads_before = self._prepared.cache_info().misses
+        started = perf_counter()
         prepared = self._prepared(plan.site, plan.settings, source_revision)
+        if self._prepared.cache_info().misses > loads_before:
+            performance.record(self.data_dir, "terrain", 1, perf_counter() - started)
+        points = len(prepared.solar_origins_m)
+        if state.points != points:
+            self.queue.set_progress(run_id, points=points)
+
         if not batch.indices:
-            self._complete(batch.run_id, plan, prepared)
+            self._complete(run_id, plan, prepared)
             return
 
-        horizons = self._horizons(batch.run_id, plan, prepared, source_revision, batch.playhead_only)
-        self.queue.set_activity(batch.run_id, "Computing snapshots")
+        horizons = self._horizons(run_id, plan, prepared, source_revision, batch.playhead_only)
+        if "preparing" in self.queue.progress_state(run_id).finished:
+            self.queue.set_progress(run_id, phase="snapshots")
+        self.queue.set_activity(run_id, "Computing snapshots")
+
+        started = perf_counter()
+        computed = 0
         for index in batch.indices:
             start, epochs = plan.ephemeris_batch(index)
             stop = start + len(epochs)
@@ -104,15 +123,26 @@ class Worker:
 
             reading = Reading.model_validate(snapshot, from_attributes=True)
             self.queue.record(batch, index, reading)
+            computed += 1
+
+        # A sample traced directly, without a horizon map, costs more; it is timed separately.
+        kind = "sample" if horizons is not None or plan.settings.ray_method == "direct" else "direct"
+        if computed:
+            performance.record(self.data_dir, kind, points, (perf_counter() - started) / computed)
+        if "preparing" not in self.queue.progress_state(run_id).finished:
+            self.queue.set_progress(run_id, finished="preparing")
 
     def _complete(self, run_id: str, plan: RunPlan, prepared: PreparedSite) -> None:
         """Find exact centre windows over the run, integrate, and publish the summary."""
         started = perf_counter()
+        self.queue.set_progress(run_id, phase="windows", finished="snapshots")
         self.queue.set_activity(run_id, "Finding sunrise and sunset times")
         windows = centre_windows(prepared, self._run_samples(plan))
         readings = self.queue.readings(run_id)
         self.queue.complete(run_id, integrate(readings, windows))
-        logger.info("Completed run %.12s (centre windows in %.1f s)", run_id, perf_counter() - started)
+        seconds = perf_counter() - started
+        performance.record(self.data_dir, "windows", (plan.end_utc - plan.start_utc).total_seconds() / 86_400, seconds)
+        logger.info("Completed run %.12s (centre windows in %.1f s)", run_id, seconds)
 
     def _horizons(
         self,
@@ -132,6 +162,7 @@ class Worker:
 
         key = (plan.site, plan.settings, source_revision)
         if key in self._horizon_maps:
+            self._note_horizons_ready(run_id)
             return self._horizon_maps[key]
 
         terrain, origins_m = prepared.terrain, prepared.solar_origins_m
@@ -139,10 +170,15 @@ class Worker:
         if horizons is None:
             if playhead_only:
                 return None
-            started = perf_counter()
+            self.queue.set_progress(run_id, phase="horizons", finished="preparing")
             self.queue.set_activity(run_id, "Building terrain horizons (one time per site)")
+            started = perf_counter()
+            built = 0
 
             def report(done: int, total: int) -> None:
+                nonlocal built
+                built = done
+                self.queue.set_progress(run_id, horizon_missing=total, horizon_done=done)
                 self.queue.set_activity(run_id, f"Building terrain horizons: {done * 100 // total}%")
                 # Each finished chunk is already saved, so stopping here loses nothing.
                 self.queue.check_wanted(run_id)
@@ -152,16 +188,26 @@ class Worker:
                 terrain, origins_m, self.horizon_cache_dir,
                 site_label(site.latitude_deg, site.longitude_deg), progress=report,
             )
-            logger.info(
-                "Built terrain horizons for %d receivers in %.1f s",
-                len(origins_m),
-                perf_counter() - started,
-            )
+            seconds = perf_counter() - started
+            if built:
+                performance.record(self.data_dir, "horizon", built, seconds)
+            self.queue.set_progress(run_id, finished="horizons")
+            logger.info("Built terrain horizons for %d of %d receivers in %.1f s", built, len(origins_m), seconds)
+        else:
+            self._note_horizons_ready(run_id)
 
         if len(self._horizon_maps) >= _HORIZON_MAPS_IN_MEMORY:
             self._horizon_maps.pop(next(iter(self._horizon_maps)))
         self._horizon_maps[key] = horizons
         return horizons
+
+    def _note_horizons_ready(self, run_id: str) -> None:
+        """The run needs no horizon building: its segment is done at once."""
+        state = self.queue.progress_state(run_id)
+        if state.horizon_missing is None:
+            self.queue.set_progress(run_id, horizon_missing=0)
+        if "horizons" not in state.finished:
+            self.queue.set_progress(run_id, finished="horizons")
 
     def _run_samples(self, plan: RunPlan) -> list[EphemerisSample]:
         """All integration epochs, loaded in the same cached batches used while processing."""

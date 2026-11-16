@@ -22,6 +22,7 @@ import hashlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import lru_cache
 from math import radians
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -37,8 +38,11 @@ AZIMUTH_COUNT = 720
 EXACT_TRACE_MARGIN_RAD = radians(0.05)
 # Change when the profile kernel or its inputs change, so stale caches are ignored.
 HORIZON_REVISION = 2
-# Receivers built between saves of a growing map.
-_BUILD_CHUNK = 256
+# Receivers built between saves of a growing map: about a tenth of the build, so progress moves in
+# about ten steps, but at least 16 and at most 256 at a time.
+_CHUNK_STEPS = 10
+_MIN_CHUNK = 16
+_MAX_CHUNK = 256
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +117,29 @@ def purge_horizons(cache_dir: Path, label: str) -> int:
     return removed
 
 
+def saved_point_count(cache_dir: Path, label: str) -> int:
+    """How many points of a site centre already have a horizon saved. Reads each map once per change."""
+    total = 0
+    for path in cache_dir.glob("*.npz"):
+        try:
+            details = path.stat()
+        except OSError:
+            continue
+        saved_label, count = _map_summary(path, details.st_mtime_ns, details.st_size)
+        if saved_label == label:
+            total += count
+    return total
+
+
+@lru_cache(maxsize=256)
+def _map_summary(path: Path, _modified_ns: int, _size: int) -> tuple[str, int]:
+    try:
+        with np.load(path, allow_pickle=False) as saved:
+            return str(saved["site_label"]), int(saved["origins_m"].shape[0])
+    except (OSError, ValueError, KeyError):
+        return "", 0
+
+
 def prune_outdated_horizons(cache_dir: Path) -> int:
     """Delete maps saved by an older version of the method; returns how many files were removed."""
     removed = 0
@@ -149,8 +176,8 @@ def load_or_build_horizons(
     """The horizons of these receivers, building and saving only the ones not yet saved.
 
     Receivers are built in chunks and the map is saved after each one, so an interrupted build
-    keeps its progress. `progress(done, total)` is called after each chunk; an exception it
-    raises stops the build, with the finished chunks saved. `label` names the site centre in the
+    keeps its progress. `progress(done, total)` is called before the first chunk and after each
+    one; an exception it raises stops the build, with the finished chunks saved. `label` names the site centre in the
     saved file so the map can be deleted with its site.
     """
     path = cache_dir / f"{_cache_key(terrain)}.npz"
@@ -158,13 +185,16 @@ def load_or_build_horizons(
     known = set(stored.index) if stored else set()
     missing = [row for row, key in enumerate(_row_keys(origins_m)) if key not in known]
 
-    for done in range(0, len(missing), _BUILD_CHUNK):
-        chunk = np.array(missing[done : done + _BUILD_CHUNK])
+    size = min(_MAX_CHUNK, max(_MIN_CHUNK, -(-len(missing) // _CHUNK_STEPS)))
+    if progress and missing:
+        progress(0, len(missing))
+    for done in range(0, len(missing), size):
+        chunk = np.array(missing[done : done + size])
         built = build_horizons(terrain, origins_m[chunk])
         stored = _merge(stored, origins_m[chunk], built)
         _write_cache(path, stored, label)
         if progress:
-            progress(min(done + _BUILD_CHUNK, len(missing)), len(missing))
+            progress(min(done + size, len(missing)), len(missing))
 
     if stored is None:
         raise ValueError("A horizon map needs at least one receiver.")

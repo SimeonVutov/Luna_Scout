@@ -1,11 +1,12 @@
 """Persist runs and choose short, fair batches for the science worker."""
 
+import json
 import os
 import shutil
 import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import closing, contextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from itertools import islice
 from pathlib import Path
@@ -15,7 +16,10 @@ from typing import Literal
 from pydantic import BaseModel
 
 from ..ephemeris.states import Correction
+from ..terrain.horizon import saved_point_count, site_label
 from .metrics import PeriodSummary, Reading
+from .performance import load_model
+from .progress import ProgressState, RunProgress, StageKey, estimate, shared_remaining
 from .plan import RunPlan
 
 
@@ -34,6 +38,8 @@ class RunStatus(BaseModel):
     submitted_utc: datetime | None = None
     # Precomputed ahead of time while the server is idle, rather than asked for by a visitor.
     background: bool = False
+    # Stages and time left, for runs that are waiting, running or paused.
+    progress: RunProgress | None = None
 
 
 class WorkerStatus(BaseModel):
@@ -205,6 +211,9 @@ class RunQueue:
         if "owner" not in columns:
             # The session that first asked for the run, kept for the record.
             db.execute("ALTER TABLE runs ADD COLUMN owner TEXT")
+        if "progress" not in columns:
+            # JSON the worker updates as a run moves through its stages; see jobs/progress.py.
+            db.execute("ALTER TABLE runs ADD COLUMN progress TEXT")
         if "abandoned" not in columns:
             # Zero while someone wants the run; otherwise when the last request was cancelled. An
             # abandoned run is hidden and not computed, but its samples stay for others to reuse.
@@ -615,6 +624,42 @@ class RunQueue:
         self._delete_run_files(removed)
         return len(removed)
 
+    def set_progress(
+        self,
+        run_id: str,
+        *,
+        phase: StageKey | None = None,
+        finished: StageKey | None = None,
+        points: int | None = None,
+        horizon_missing: int | None = None,
+        horizon_done: int | None = None,
+    ) -> None:
+        """Record where the worker is in a run. Changes reach watching pages through the run's revision."""
+        with self._connection() as db:
+            row = self._find(db, run_id)
+            if row is None:
+                return
+            state = ProgressState.from_dict(json.loads(row["progress"] or "{}"))
+            if phase is not None and phase != state.phase:
+                state.phase, state.phase_started_ns = phase, time_ns()
+            if finished is not None and finished not in state.finished:
+                state.finished.append(finished)
+            if points is not None:
+                state.points = points
+            if horizon_missing is not None:
+                state.horizon_missing = horizon_missing
+            if horizon_done is not None:
+                state.horizon_done = horizon_done
+            db.execute(
+                "UPDATE runs SET progress = ?, revision = revision + 1 WHERE run_id = ?",
+                (json.dumps(asdict(state)), run_id),
+            )
+
+    def progress_state(self, run_id: str) -> ProgressState:
+        with self._connection() as db:
+            row = self._find(db, run_id)
+        return ProgressState.from_dict(json.loads(row["progress"] or "{}")) if row is not None else ProgressState()
+
     def unfinished_count(self) -> int:
         """How many visitors' runs are waiting or running. Precomputed runs are not counted."""
         with self._connection() as db:
@@ -857,8 +902,7 @@ class RunQueue:
     def _find(db: sqlite3.Connection, run_id: str) -> sqlite3.Row | None:
         return db.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
 
-    @staticmethod
-    def _status(db: sqlite3.Connection, row: sqlite3.Row, *, include_ready: bool = True) -> RunStatus:
+    def _status(self, db: sqlite3.Connection, row: sqlite3.Row, *, include_ready: bool = True) -> RunStatus:
         plan = RunPlan.model_validate_json(row["plan"])
         samples = [
             item[0]
@@ -881,7 +925,56 @@ class RunQueue:
             message=row["message"],
             submitted_utc=datetime.fromtimestamp(row["submitted"] / 1e9, UTC),
             background=bool(row["background"]),
+            progress=self._progress(db, row, plan),
         )
+
+    def _progress(self, db: sqlite3.Connection, row: sqlite3.Row, plan: RunPlan) -> RunProgress | None:
+        """Stages and time left for a waiting, running or paused run; None otherwise."""
+        if row["stage"] not in ("queued", "running", "paused"):
+            return None
+
+        stages, own = self._own_estimate(db, row, plan)
+        state = ProgressState.from_dict(json.loads(row["progress"] or "{}"))
+        others: list[float] = []
+        # Visitors' runs take turns with each other. Background runs step aside, so they are not
+        # counted, and a background run's own estimate is only a guide.
+        if not row["background"] and row["stage"] != "paused":
+            for other in db.execute(
+                """
+                SELECT * FROM runs WHERE stage IN ('queued', 'running') AND background = 0
+                    AND orphaned = 0 AND abandoned = 0 AND run_id != ?
+                """,
+                (row["run_id"],),
+            ).fetchall():
+                others.append(self._own_estimate(db, other, RunPlan.model_validate_json(other["plan"]))[1])
+
+        return RunProgress(
+            stages=stages,
+            remaining_s=round(shared_remaining(own, others), 1),
+            basis=self._model().basis,
+            sharing_with=len(others),
+            waiting=row["stage"] == "queued" and state.phase is None,
+        )
+
+    def _own_estimate(self, db: sqlite3.Connection, row: sqlite3.Row, plan: RunPlan):
+        reused = db.execute(
+            "SELECT COALESCE(SUM(samples), 0) FROM reused_samples WHERE run_id = ?", (row["run_id"],)
+        ).fetchone()[0]
+        site = plan.site
+        return estimate(
+            plan,
+            completed_samples=row["completed_samples"],
+            reused_samples=int(reused),
+            state=ProgressState.from_dict(json.loads(row["progress"] or "{}")),
+            model=self._model(),
+            saved_horizon_points=saved_point_count(
+                self.directory.parent / "cache" / "horizons", site_label(site.latitude_deg, site.longitude_deg)
+            ),
+            now_ns=time_ns(),
+        )
+
+    def _model(self):
+        return load_model(self.directory.parent)
 
 
 def _same_site(plan: RunPlan, latitude_deg: float, longitude_deg: float, radius_m: float) -> bool:
