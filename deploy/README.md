@@ -70,6 +70,15 @@ journalctl -u lunascout-worker -n 50
 journalctl -u caddy -n 50
 ```
 
+## Precomputed reference sites
+
+A weekly timer queues NASA's reference sites, from the first of the current month to the end of the next, with the website's default settings. The worker computes them only while no visitor's simulation is waiting, and runs at a lower CPU priority than the API, so the website stays responsive. The first pass builds a terrain horizon map for each of the 15 sites, then computes each day; expect it to take hours on this machine. Progress shows in the Activity menu. To queue it now, or for other dates:
+
+```sh
+sudo systemctl start lunascout-precompute
+sudo -u lunascout bash -c 'cd /srv/lunascout/app/backend && set -a && . /etc/lunascout.env && .venv/bin/lunascout-science precompute --through 2027-01-31'
+```
+
 ## Monthly ephemeris check
 
 A timer compares the application's Sun and Earth positions with JPL Horizons once a month. Each run adds one line to `/srv/lunascout/DATA/logs/ephemeris-check.log`, and a difference over 1 km, or a failure to reach Horizons, marks the run as failed. Nothing appears on the website. To read the log, or run the check now:
@@ -98,6 +107,7 @@ The server runs in public mode (`LUNASCOUT_PUBLIC_MODE=1`, set in `/etc/lunascou
 - **Deleting saved results is turned off.** Results are shared between visitors.
 - **Runs are limited:** at most 35 days, a site radius up to 500 m, a grid spacing of at least 20 m, and at most six waiting at once. A busy server answers "try again in a few minutes".
 - **Heavy requests are rate limited** per visitor.
+- **Only the browser that started a simulation can pause or cancel it.** Anyone can resume a paused one. Simulations are shared between visitors who ask for exactly the same site, dates and settings, so this stops one visitor from stopping another's work.
 
 To run privately, remove the `LUNASCOUT_PUBLIC_MODE` line from `/etc/lunascout.env` and run `sudo systemctl restart lunascout-api`.
 

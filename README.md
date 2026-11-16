@@ -145,11 +145,19 @@ The [video tutorial](#video-tutorial) shows the usual steps. A few details it do
 
 **One timeline for every site.** Changing the date range starts a simulation for all saved sites. Only the missing times are computed, because results stored for the same site and settings are reused, and narrowing the range deletes nothing. Long ranges are limited by computing time on the server: choose a coarser **Sample every** in Settings for ranges longer than a few months.
 
+**Pause, resume and cancel.** A running simulation can be paused and resumed later from where it stopped. Cancel deletes what it computed. On a public server only the browser that started a simulation can pause or cancel it, while anyone can resume one.
+
+**Results follow the request, not the browser.** When you open a site with the same dates and settings as an earlier simulation, from any browser, its results appear without pressing Run. When earlier simulations cover part of your dates, only the rest is computed, and that starts on its own.
+
+**Reference sites are precomputed.** NASA's reference sites are computed ahead of time with the default settings and a 500 m radius, from the start of the month to the end of the next one. A label such as "Ready to 31 Dec" shows which ones are done, and adding one shows its results at once. A smaller radius at the same centre reuses the terrain horizons, so it is quick too.
+
+**Site size.** New sites start with a 50 m radius. The largest allowed is 500 m.
+
 **Activity menu.** It shows whether the worker and API are running, what the worker is doing, and every recent simulation with its progress.
 
 **Deleting a site.** A site you created has its stored results removed to save space. A reference site keeps its results, hidden, for 14 days, and restores only the part inside the current timeline if you add it back.
 
-The first run at a new site builds a terrain horizon map, which takes about a minute. Later runs and date changes at that site reuse it.
+The first run at a new site builds a terrain horizon map, which takes about a minute for a 500 m site. Later runs, date changes and smaller radii at that centre reuse it.
 
 ## How it works
 
@@ -196,6 +204,16 @@ uv run --locked lunascout-science snapshot \
 ```
 
 This writes `summary.json` and `grid.npz`. With these settings Shackleton Rim is 95.9% lit, which is the project's regression reference.
+
+Other commands:
+
+```sh
+uv run --locked lunascout-science precompute                       # queue NASA's reference sites to the end of next month
+uv run --locked lunascout-science precompute --from 2026-12-01 --through 2026-12-31
+LUNASCOUT_HORIZONS_CONTACT='you@example.org' uv run --locked lunascout-science check-ephemeris
+```
+
+`precompute` only queues background work, which the worker computes whenever no visitor's simulation is waiting. `check-ephemeris` compares the Sun and Earth positions with JPL Horizons and appends the result to `DATA/logs/ephemeris-check.log`.
 
 ## Tests
 

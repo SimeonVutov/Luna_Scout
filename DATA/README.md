@@ -80,7 +80,12 @@ Maps are cached in `cache/horizons/`. The cache key covers the terrain checksums
 
 | Endpoint | Returns |
 |---|---|
-| `POST /api/runs` | Queues or reuses a run. Identical inputs, including data checksums, share one result. |
+| `POST /api/runs` | Queues or reuses a run. Identical inputs, including data checksums, share one result. An optional `session` (the browser's random ID) records who started it. |
+| `POST /api/runs/lookup` | The run for a request if it exists, and how many of its samples earlier runs of the same site and settings already computed. Starts nothing. |
+| `POST /api/runs/{id}/pause?session=` | Stops computing a run and keeps what it computed. On a public server only the starting session may pause. |
+| `POST /api/runs/{id}/resume` | Continues a paused or failed run from where it stopped. |
+| `DELETE /api/runs/{id}?session=` | Stops a run and deletes what it computed; snapshots shared with other runs stay. On a public server only the starting session may cancel. |
+| `GET /api/precomputed` | For each NASA reference site, the newest precomputed date range with the website's default settings, and whether it is complete. |
 | `GET /api/runs/{id}` | Progress, ready snapshots and the period summary |
 | `GET /api/runs/events?run_id=…` | Live progress (server-sent events) |
 | `GET /api/runs/{id}/snapshots/{index}` | One hour's metrics, sunlight grid and Earth line-of-sight grid (fraction of Earth's disk seen from mast height per point; absent before model revision 5) |
