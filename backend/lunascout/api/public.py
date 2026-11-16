@@ -35,7 +35,7 @@ class PublicMode:
     enabled: bool = False
     # A bit more than one lunar day (29.5 days), so a full day and night can be compared.
     max_range: timedelta = timedelta(days=35)
-    max_radius_m: int = 2_000
+    max_radius_m: int = 500
     min_grid_spacing_m: float = 20.0
     max_solar_disk_samples: int = 61
     # Runs waiting or running at once. The single worker handles them one after another.

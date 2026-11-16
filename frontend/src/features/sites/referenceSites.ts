@@ -1,6 +1,6 @@
 import type { SiteSpec } from "../../api/types";
 
-export const maximumSiteRadius = 1_000_000;
+export const maximumSiteRadius = 500;
 
 type Group = { title: string; sites: SiteSpec[] };
 

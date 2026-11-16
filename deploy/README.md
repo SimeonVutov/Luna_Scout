@@ -86,7 +86,7 @@ The server runs in public mode (`LUNASCOUT_PUBLIC_MODE=1`, set in `/etc/lunascou
 
 - **Each visitor's sites stay in their own browser.** The server-side site list is turned off, so visitors cannot change each other's sites.
 - **Deleting saved results is turned off.** Results are shared between visitors.
-- **Runs are limited:** at most 35 days, a site radius up to 2 km, a grid spacing of at least 20 m, and at most six waiting at once. A busy server answers "try again in a few minutes".
+- **Runs are limited:** at most 35 days, a site radius up to 500 m, a grid spacing of at least 20 m, and at most six waiting at once. A busy server answers "try again in a few minutes".
 - **Heavy requests are rate limited** per visitor.
 
 To run privately, remove the `LUNASCOUT_PUBLIC_MODE` line from `/etc/lunascout.env` and run `sudo systemctl restart lunascout-api`.
