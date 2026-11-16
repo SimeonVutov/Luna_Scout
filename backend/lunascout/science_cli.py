@@ -1,4 +1,4 @@
-"""Download the science inputs or run one terrain and ephemeris snapshot."""
+"""Download the science inputs, run one terrain and ephemeris snapshot, or check the ephemeris."""
 
 import argparse
 import json
@@ -7,7 +7,7 @@ import os
 import shutil
 import sys
 from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.error import URLError
@@ -15,7 +15,8 @@ from urllib.request import urlopen
 
 import numpy as np
 
-from .ephemeris.horizons import (
+from .ephemeris.horizons_check import WARNING_THRESHOLD_M, compare_with_horizons
+from .ephemeris.states import (
     KERNEL_NAMES,
     Ephemerides,
     EphemerisError,
@@ -46,6 +47,9 @@ def main() -> None:
     try:
         if arguments.command == "fetch-data":
             _fetch_data(arguments.data_dir)
+        elif arguments.command == "check-ephemeris":
+            if not _check_ephemeris(arguments):
+                sys.exit(1)
         elif arguments.command == "ephemeris":
             series = load_ephemerides_at(
                 tuple(arguments.at), data_dir=arguments.data_dir, correction=arguments.correction
@@ -72,6 +76,13 @@ def _argument_parser() -> argparse.ArgumentParser:
         "--at", type=_timestamp, action="append", required=True, help="UTC epoch"
     )
     _correction_option(ephemeris)
+
+    check = commands.add_parser(
+        "check-ephemeris",
+        help="Compare SPICE with JPL Horizons at a few epochs and log the largest difference.",
+    )
+    check.add_argument("--epochs", type=int, default=12, help="How many epochs to compare")
+    check.add_argument("--days", type=int, default=60, help="Spread the epochs over this many days from now")
 
     snapshot = commands.add_parser(
         "snapshot", help="Trace sunlight and Earth visibility at one UTC epoch."
@@ -144,7 +155,7 @@ def _fetch_data(data_dir: Path) -> None:
     terrain_dir = data_dir / "raw" / "terrain"
     inputs = [
         (kernel_dir / name, f"{_NAIF_KERNELS_URL}/{folder}/{name}")
-        for name, folder in zip(KERNEL_NAMES, ("lsk", "fk/satellites", "pck"), strict=True)
+        for name, folder in zip(KERNEL_NAMES, ("lsk", "fk/satellites", "pck", "spk/planets"), strict=True)
     ]
     inputs.extend(
         (terrain_dir / name, f"{_GODDARD_DATA_URL}/LOLA_20mpp/{name}")
@@ -215,14 +226,50 @@ def _ephemeris_report(series: Ephemerides) -> dict[str, object]:
 
 def _ephemeris_source(series: Ephemerides) -> dict[str, object]:
     return {
-        "provider": "NASA JPL Horizons",
+        "provider": "NASA NAIF SPICE",
+        "ephemeris": series.source,
         "frame": series.frame,
         "correction": series.correction,
-        "api_versions": series.horizons_api_versions,
-        "planetary_ephemerides": series.ephemeris_sources,
-        "response_sha256": series.response_sha256,
         "kernels_sha256": series.kernels_sha256,
     }
+
+
+def _check_ephemeris(arguments: argparse.Namespace) -> bool:
+    """Compare SPICE with Horizons and append the outcome to logs/ephemeris-check.log.
+
+    Returns False when the difference is over the warning threshold or Horizons failed, so a
+    scheduler can flag the run. Nothing is shown in the web application.
+    """
+    now = datetime.now(UTC).replace(second=0, microsecond=0)
+    count = max(2, arguments.epochs)
+    # Spread over the coming days, with odd minute offsets so no two checks repeat the same times.
+    times = tuple(
+        now + timedelta(days=arguments.days * k / (count - 1), minutes=7 * k) for k in range(count)
+    )
+    log = arguments.data_dir / "logs" / "ephemeris-check.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+
+    contact = os.environ.get("LUNASCOUT_HORIZONS_CONTACT", "")
+    try:
+        result = compare_with_horizons(times, data_dir=arguments.data_dir, contact=contact)
+    except EphemerisError as exc:
+        line = f"{now.isoformat()} ERROR could not compare with Horizons: {exc}"
+        ok = False
+    else:
+        ok = result.within_threshold
+        status = "OK" if ok else f"WARNING over {WARNING_THRESHOLD_M:g} m"
+        line = (
+            f"{now.isoformat()} {status} | {result.epochs} epochs over {arguments.days} days | "
+            f"largest difference: Sun {result.sun_max_m:.1f} m, Earth {result.earth_max_m:.1f} m | "
+            f"Horizons {result.horizons_source}"
+        )
+
+    with log.open("a", encoding="utf-8") as file:
+        file.write(line + "\n")
+    print(line)
+    if not ok:
+        logging.getLogger(__name__).warning("Ephemeris check: %s", line)
+    return ok
 
 
 def _run_snapshot(arguments: argparse.Namespace) -> None:
