@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from itertools import islice
 from pathlib import Path
-from time import time_ns
+from time import sleep, time_ns
 from typing import Literal
 
 from pydantic import BaseModel
@@ -113,6 +113,9 @@ class RunLookup(BaseModel):
 # The request recorded for callers without a browser session, such as a private server's CLI.
 LOCAL_SESSION = "local"
 
+# Tries, 0.1 s apart, at switching the database to write-ahead logging while another process does.
+_WAL_ATTEMPTS = 50
+
 # A worker that has not reported for this long is treated as stopped.
 WORKER_TIMEOUT_NS = 10_000_000_000
 
@@ -142,7 +145,7 @@ class RunQueue:
     def initialize(self) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
         with self._connection() as db:
-            db.execute("PRAGMA journal_mode = WAL")
+            _use_write_ahead_log(db)
             self._create_tables(db)
             self._add_physics_keys(db)
 
@@ -199,7 +202,12 @@ class RunQueue:
 
     @staticmethod
     def _add_physics_keys(db: sqlite3.Connection) -> None:
-        """Older databases lack the column that lets runs share samples; add and fill it."""
+        """Add the columns older databases lack, and fill the one that lets runs share samples.
+
+        The API and the worker start together, so the check and the additions happen under the
+        database's write lock: the second process waits, then finds the columns already there.
+        """
+        db.execute("BEGIN IMMEDIATE")
         columns = {row["name"] for row in db.execute("PRAGMA table_info(runs)")}
         if "physics_key" not in columns:
             db.execute("ALTER TABLE runs ADD COLUMN physics_key TEXT")
@@ -976,6 +984,22 @@ class RunQueue:
     def _model(self):
         return load_model(self.directory.parent)
 
+
+def _use_write_ahead_log(db: sqlite3.Connection) -> None:
+    """Switch the database to write-ahead logging, which lets the API read while the worker writes.
+
+    Switching needs the file to itself for a moment, and the usual wait for a lock does not apply.
+    The API and the worker start together, so a switch already under way elsewhere is waited for.
+    """
+    for attempt in range(_WAL_ATTEMPTS):
+        try:
+            if db.execute("PRAGMA journal_mode").fetchone()[0] != "wal":
+                db.execute("PRAGMA journal_mode = WAL")
+            return
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc) or attempt == _WAL_ATTEMPTS - 1:
+                raise
+            sleep(0.1)
 
 def _same_site(plan: RunPlan, latitude_deg: float, longitude_deg: float, radius_m: float) -> bool:
     site = plan.site

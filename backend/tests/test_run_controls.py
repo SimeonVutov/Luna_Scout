@@ -126,3 +126,32 @@ def test_on_a_public_server_each_browser_controls_only_its_own_request(tmp_path)
     assert cancel(run_id, session="browser-two").stage == "queued"
     assert pause(run_id, session="browser-one").stage == "paused"
     assert resume(run_id, session="browser-one").stage == "queued"
+
+
+def test_processes_starting_together_upgrade_an_old_database_once(tmp_path):
+    import sqlite3
+    from concurrent.futures import ProcessPoolExecutor
+
+    # A database from before the newer columns existed.
+    (tmp_path / "runs").mkdir()
+    with sqlite3.connect(tmp_path / "runs" / "queue.sqlite3") as db:
+        db.execute("""
+            CREATE TABLE runs (
+                run_id TEXT PRIMARY KEY, plan TEXT NOT NULL, stage TEXT NOT NULL DEFAULT 'queued',
+                priority_index INTEGER NOT NULL, submitted INTEGER NOT NULL,
+                last_served INTEGER NOT NULL DEFAULT 0, revision INTEGER NOT NULL DEFAULT 1,
+                completed_samples INTEGER NOT NULL DEFAULT 0, period TEXT, message TEXT)
+        """)
+
+    with ProcessPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(_initialize, [tmp_path] * 8))
+    assert results == ["ok"] * 8
+
+    with sqlite3.connect(tmp_path / "runs" / "queue.sqlite3") as db:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(runs)")}
+    assert {"physics_key", "orphaned", "background", "owner", "progress", "abandoned"} <= columns
+
+
+def _initialize(data_dir) -> str:
+    RunQueue(data_dir).initialize()
+    return "ok"
