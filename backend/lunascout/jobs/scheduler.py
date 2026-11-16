@@ -32,6 +32,8 @@ class RunStatus(BaseModel):
     period: PeriodSummary | None
     message: str | None
     submitted_utc: datetime | None = None
+    # Precomputed ahead of time while the server is idle, rather than asked for by a visitor.
+    background: bool = False
 
 
 class WorkerStatus(BaseModel):
@@ -76,6 +78,21 @@ class RunRemoved(RuntimeError):
 
 class RunPaused(RuntimeError):
     """The run was paused while the worker was computing it."""
+
+
+class RunYielded(RuntimeError):
+    """A background run stepped aside because a visitor's run is waiting."""
+
+
+class Coverage(BaseModel):
+    """The dates a site's precomputed results cover, with the website's default settings."""
+
+    latitude_deg: float
+    longitude_deg: float
+    radius_m: float
+    start_utc: datetime
+    end_utc: datetime
+    complete: bool
 
 
 class RunLookup(BaseModel):
@@ -172,6 +189,8 @@ class RunQueue:
         if "orphaned" not in columns:
             # Zero for a live run; otherwise when its site was deleted and its results were kept.
             db.execute("ALTER TABLE runs ADD COLUMN orphaned INTEGER NOT NULL DEFAULT 0")
+        if "background" not in columns:
+            db.execute("ALTER TABLE runs ADD COLUMN background INTEGER NOT NULL DEFAULT 0")
         if "owner" not in columns:
             # The browser session that first asked for the run; on a public server only it may
             # pause or cancel the run.
@@ -180,7 +199,9 @@ class RunQueue:
             key = RunPlan.model_validate_json(row["plan"]).physics_key()
             db.execute("UPDATE runs SET physics_key = ? WHERE run_id = ?", (key, row["run_id"]))
 
-    def submit(self, plan: RunPlan, priority_at: datetime | None = None, owner: str | None = None) -> RunStatus:
+    def submit(
+        self, plan: RunPlan, priority_at: datetime | None = None, owner: str | None = None, *, background: bool = False
+    ) -> RunStatus:
         """Reuse identical inputs. A failed run can resume its remaining samples; a paused run stays
         paused until it is resumed, so changing the timeline never restarts it by surprise.
 
@@ -193,15 +214,17 @@ class RunQueue:
             is_new = self._find(db, run_id) is None
             db.execute(
                 """
-                INSERT INTO runs (run_id, plan, priority_index, submitted, physics_key, owner) VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO runs (run_id, plan, priority_index, submitted, physics_key, owner, background)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(run_id) DO UPDATE SET
                     priority_index = excluded.priority_index,
+                    background = MIN(runs.background, excluded.background),
                     message = NULL,
                     stage = CASE WHEN runs.stage = 'failed' THEN 'queued' ELSE runs.stage END,
                     revision = runs.revision + CASE WHEN runs.stage = 'failed' THEN 1 ELSE 0 END
                 WHERE runs.stage != 'complete'
                 """,
-                (run_id, plan.model_dump_json(), index, time_ns(), plan.physics_key(), owner),
+                (run_id, plan.model_dump_json(), index, time_ns(), plan.physics_key(), owner, int(background)),
             )
             db.execute("UPDATE runs SET orphaned = 0 WHERE run_id = ?", (run_id,))
             discarded: list[str] = []
@@ -404,13 +427,70 @@ class RunQueue:
         return bool(removed)
 
     def check_wanted(self, run_id: str) -> None:
-        """Raise if the run was deleted or paused, so long work on it can stop early."""
+        """Raise if the run was deleted or paused, or is background work a visitor is waiting
+        behind, so long work on it can stop early."""
         with self._connection() as db:
             row = self._find(db, run_id)
+            visitor_waiting = row is not None and bool(row["background"]) and self._visitor_waiting(db)
         if row is None:
             raise RunRemoved(run_id)
         if row["stage"] == "paused":
             raise RunPaused(run_id)
+        if visitor_waiting:
+            raise RunYielded(run_id)
+
+    @staticmethod
+    def _visitor_waiting(db: sqlite3.Connection) -> bool:
+        row = db.execute(
+            "SELECT 1 FROM runs WHERE stage IN ('queued', 'running') AND orphaned = 0 AND background = 0 LIMIT 1"
+        ).fetchone()
+        return row is not None
+
+    def coverage(self, physics_keys: dict[str, tuple[float, float, float]]) -> list[Coverage]:
+        """Precomputed date ranges for the given physics keys, newest first per key.
+
+        `physics_keys` maps each key to the site's latitude, longitude and radius.
+        """
+        if not physics_keys:
+            return []
+        placeholders = ", ".join("?" for _ in physics_keys)
+        with self._connection() as db:
+            rows = db.execute(
+                f"""
+                SELECT physics_key, plan, stage FROM runs
+                WHERE background = 1 AND orphaned = 0 AND physics_key IN ({placeholders})
+                ORDER BY submitted DESC
+                """,
+                tuple(physics_keys),
+            ).fetchall()
+
+        result = []
+        for row in rows:
+            plan = RunPlan.model_validate_json(row["plan"])
+            latitude, longitude, radius = physics_keys[row["physics_key"]]
+            result.append(Coverage(
+                latitude_deg=latitude, longitude_deg=longitude, radius_m=radius,
+                start_utc=plan.start_utc, end_utc=plan.end_utc, complete=row["stage"] == "complete",
+            ))
+        return result
+
+    def drop_superseded_background(self, plan: RunPlan) -> int:
+        """Delete older precomputed runs of the same physics whose dates `plan` covers.
+
+        Called after `plan` was submitted, which copied their samples, so nothing is lost.
+        """
+        with self._connection() as db:
+            doomed = []
+            for row in db.execute(
+                "SELECT run_id, plan FROM runs WHERE background = 1 AND physics_key = ? AND run_id != ?",
+                (plan.physics_key(), plan.identity()),
+            ).fetchall():
+                other = RunPlan.model_validate_json(row["plan"])
+                if plan.start_utc <= other.start_utc and other.end_utc <= plan.end_utc:
+                    doomed.append(row["run_id"])
+            removed = self._remove_runs(db, doomed)
+        self._delete_run_files(removed)
+        return len(removed)
 
     def _set_stage(self, run_id: str, stage: str, *, from_stages: tuple[str, ...]) -> RunStatus | None:
         with self._connection() as db:
@@ -426,10 +506,10 @@ class RunQueue:
             return self._status(db, row) if row is not None else None
 
     def unfinished_count(self) -> int:
-        """How many runs are waiting or running."""
+        """How many visitors' runs are waiting or running. Precomputed runs are not counted."""
         with self._connection() as db:
             row = db.execute(
-                "SELECT COUNT(*) FROM runs WHERE stage IN ('queued', 'running') AND orphaned = 0"
+                "SELECT COUNT(*) FROM runs WHERE stage IN ('queued', 'running') AND orphaned = 0 AND background = 0"
             ).fetchone()
         return int(row[0])
 
@@ -515,10 +595,14 @@ class RunQueue:
             row = db.execute(
                 """
                 SELECT * FROM runs AS run WHERE stage IN ('queued', 'running') AND orphaned = 0
-                ORDER BY EXISTS (
-                    SELECT 1 FROM readings
-                    WHERE run_id = run.run_id AND sample_index = run.priority_index
-                ), last_served, submitted
+                ORDER BY background,
+                    -- Visitors' runs take turns; background runs finish one site at a time, so
+                    -- the worker keeps one site's terrain loaded instead of switching every batch.
+                    CASE WHEN background = 1 THEN submitted ELSE 0 END,
+                    EXISTS (
+                        SELECT 1 FROM readings
+                        WHERE run_id = run.run_id AND sample_index = run.priority_index
+                    ), last_served, submitted
                 LIMIT 1
                 """
             ).fetchone()
@@ -569,6 +653,8 @@ class RunQueue:
             if row["stage"] == "paused":
                 # Pausing takes effect within one sample; this sample is not saved.
                 raise RunPaused(batch.run_id)
+            if row["background"] and self._visitor_waiting(db):
+                raise RunYielded(batch.run_id)
             inserted = db.execute(
                 "INSERT OR IGNORE INTO readings VALUES (?, ?, ?, ?)",
                 (batch.run_id, index, batch.plan.is_frame(index), reading.model_dump_json()),
@@ -677,6 +763,7 @@ class RunQueue:
             period=PeriodSummary.model_validate_json(row["period"]) if row["period"] else None,
             message=row["message"],
             submitted_utc=datetime.fromtimestamp(row["submitted"] / 1e9, UTC),
+            background=bool(row["background"]),
         )
 
 

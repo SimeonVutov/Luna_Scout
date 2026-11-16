@@ -41,7 +41,7 @@ from ..terrain.horizon import (
 from ..terrain.model import TerrainError, prepare_terrain
 from .metrics import Reading, integrate
 from .plan import MODEL_REVISION, MissingScienceInputs, RunPlan, science_sources
-from .scheduler import EphemerisChunk, RunPaused, RunQueue, RunRemoved, WorkBatch
+from .scheduler import EphemerisChunk, RunPaused, RunQueue, RunRemoved, RunYielded, WorkBatch
 
 # A batch is long enough to amortise preparing a site's terrain when several sites take turns.
 _BATCH_SIZE = 96
@@ -251,6 +251,9 @@ def main() -> None:
                     queue.set_activity(None, None)
                 except RunPaused:
                     logger.info("Run %.12s was paused; its saved samples are kept.", batch.run_id)
+                    queue.set_activity(None, None)
+                except RunYielded:
+                    # Background work steps aside for a visitor and continues afterwards.
                     queue.set_activity(None, None)
                 except (EphemerisError, TerrainError, MissingScienceInputs, ValueError) as exc:
                     # Keep the chained cause in the log; the queue message stays short for the dashboard.
