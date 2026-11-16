@@ -8,13 +8,13 @@ from pathlib import Path
 
 from pydantic import AwareDatetime, BaseModel
 
-from ..ephemeris.horizons import BATCH_SIZE, KERNEL_NAMES
+from ..ephemeris.states import BATCH_SIZE, KERNEL_NAMES
 from ..simulation.engine import SimulationSettings, grid_half_width
 from ..simulation.frames import SiteFootprint
 from ..terrain.model import LOCAL_DEM_NAMES, REGIONAL_DEM_NAMES
 
 # Change this when the solver or output meaning changes so old runs stay immutable.
-MODEL_REVISION = 5
+MODEL_REVISION = 6
 DEFAULT_INTEGRATION_MINUTES = 15
 # One year at the default 15 minute cadence is 35,040 intervals.
 MAX_INTERVALS = 40_000

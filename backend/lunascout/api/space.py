@@ -17,12 +17,7 @@ from fastapi import Path as PathParameter
 from pydantic import AwareDatetime, BaseModel, Field
 
 from ..jobs.scheduler import RunQueue
-from ..ephemeris.horizons import (
-    EphemerisError,
-    EphemerisSample,
-    HorizonsUnavailable,
-    load_ephemerides_at,
-)
+from ..ephemeris.states import EphemerisError, EphemerisSample, load_ephemerides_at
 from ..jobs.plan import ephemeris_batch
 from ..simulation.engine import (
     Bounds,
@@ -119,7 +114,7 @@ class RunRays(BaseModel):
 
 
 class _SkyService:
-    """Load Horizons batches and site terrain once and reuse them between requests."""
+    """Keep recent Sun and Earth batches and site terrain, and reuse them between requests."""
 
     def __init__(self, data_dir: Path) -> None:
         self._data_dir = data_dir
@@ -131,7 +126,7 @@ class _SkyService:
     def batch(
         self, start_utc: datetime, end_utc: datetime, integration_minutes: int, index: int
     ) -> tuple[int, tuple[EphemerisSample, ...]]:
-        """The Horizons batch that holds sample `index`, identical to the one a run uses."""
+        """The batch of positions that holds sample `index`, identical to the one a run uses."""
         first, epochs = ephemeris_batch(start_utc, end_utc, integration_minutes, index)
         with self.lock:
             samples = self._batches.get(epochs)
@@ -310,9 +305,6 @@ def _load_batch(
         return service.batch(start_utc, end_utc, integration_minutes, index)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    except HorizonsUnavailable as exc:
-        logger.warning("Horizons unavailable for the 3D view: %s", exc)
-        raise HTTPException(503, "JPL Horizons could not be reached. Try again shortly.") from exc
     except EphemerisError as exc:
         logger.warning("Sun and Earth positions unavailable: %s", exc)
         raise HTTPException(503, str(exc)) from exc

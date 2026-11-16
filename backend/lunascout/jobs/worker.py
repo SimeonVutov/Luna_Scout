@@ -14,12 +14,11 @@ from time import perf_counter, sleep
 import numpy as np
 from filelock import FileLock, Timeout
 
-from ..ephemeris.horizons import (
+from ..ephemeris.states import (
     BATCH_SIZE,
     Ephemerides,
     EphemerisError,
     EphemerisSample,
-    HorizonsUnavailable,
     load_ephemerides_at,
 )
 from ..simulation.engine import (
@@ -46,8 +45,6 @@ from .scheduler import EphemerisChunk, RunQueue, RunRemoved, WorkBatch
 # A batch is long enough to amortise preparing a site's terrain when several sites take turns.
 _BATCH_SIZE = 96
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parents[3] / "DATA"
-# Waits before retrying a run whose Horizons request failed transiently.
-_HORIZONS_RETRY_DELAYS_S = (15, 60, 180)
 _HORIZON_MAPS_IN_MEMORY = 6
 # Results kept for a deleted reference site are dropped if the site does not return in this time.
 KEPT_RESULTS_LIFETIME = timedelta(days=14)
@@ -91,9 +88,7 @@ class Worker:
                     through_utc=plan.at(stop - 1),
                     frame=ephemerides.frame,
                     correction=ephemerides.correction,
-                    api_versions=ephemerides.horizons_api_versions,
-                    planetary_ephemerides=ephemerides.ephemeris_sources,
-                    response_sha256=ephemerides.response_sha256,
+                    source=ephemerides.source,
                     kernels_sha256=ephemerides.kernels_sha256,
                 ),
             )
@@ -222,7 +217,6 @@ def main() -> None:
     if removed:
         logger.info("Removed %d kept runs of sites that were deleted more than %s ago.", removed, KEPT_RESULTS_LIFETIME)
     worker = Worker(args.data_dir, queue)
-    horizons_retries: dict[str, int] = {}
     lock = FileLock(queue.directory / "worker.lock", timeout=0)
     stop_beating = Event()
     owns_lock = False
@@ -241,38 +235,12 @@ def main() -> None:
                 try:
                     worker.process(batch)
                     queue.set_activity(None, None)
-                    horizons_retries.pop(batch.run_id, None)
                 except RunRemoved:
                     # The run was deleted with its site while this batch was computing.
                     logger.info("Run %.12s was removed; dropping its remaining work.", batch.run_id)
                     queue.set_activity(None, None)
-                except HorizonsUnavailable as exc:
-                    # Saved samples stay recorded, so a later attempt resumes the run.
-                    attempt = horizons_retries.get(batch.run_id, 0)
-                    if attempt < len(_HORIZONS_RETRY_DELAYS_S):
-                        horizons_retries[batch.run_id] = attempt + 1
-                        delay = _HORIZONS_RETRY_DELAYS_S[attempt]
-                        logger.warning(
-                            "Run %.12s: %s Retrying in %d s (attempt %d of %d).",
-                            batch.run_id,
-                            exc,
-                            delay,
-                            attempt + 1,
-                            len(_HORIZONS_RETRY_DELAYS_S),
-                            exc_info=exc.__cause__ is not None,
-                        )
-                        sleep(delay)
-                        continue
-
-                    horizons_retries.pop(batch.run_id, None)
-                    logger.warning("Run %.12s failed: %s", batch.run_id, exc, exc_info=True)
-                    queue.fail(
-                        batch.run_id,
-                        f"{exc} Saved snapshots are kept; retry the run to resume it.",
-                    )
                 except (EphemerisError, TerrainError, MissingScienceInputs, ValueError) as exc:
-                    # Keep the chained cause (DNS, TLS, timeout, HTTP) in the log;
-                    # the queue message stays short for the dashboard.
+                    # Keep the chained cause in the log; the queue message stays short for the dashboard.
                     logger.warning(
                         "Run %.12s failed at samples %s: %s",
                         batch.run_id,

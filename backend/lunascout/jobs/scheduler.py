@@ -14,7 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from ..ephemeris.horizons import Correction
+from ..ephemeris.states import Correction
 from .metrics import PeriodSummary, Reading
 from .plan import RunPlan
 
@@ -53,9 +53,8 @@ class EphemerisChunk(BaseModel):
     through_utc: datetime
     frame: str
     correction: Correction
-    api_versions: tuple[str, ...]
-    planetary_ephemerides: tuple[str, ...]
-    response_sha256: tuple[str, ...]
+    # Which ephemeris produced the positions. Rows saved before SPICE replaced Horizons lack it.
+    source: str = "JPL Horizons"
     kernels_sha256: dict[str, str]
 
 

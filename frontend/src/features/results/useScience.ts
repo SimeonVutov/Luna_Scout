@@ -19,7 +19,7 @@ export const defaultOptions: SimulationOptions = {
  * of it: when the results gain something new (match `MODEL_REVISION` in the backend's plan.py),
  * older saved results are no longer reused and the site is computed again.
  */
-const MODEL_REVISION = 5;
+const MODEL_REVISION = 6;
 
 function requestKey(site: Site, range: TimeRange, options: SimulationOptions) {
   return JSON.stringify([
