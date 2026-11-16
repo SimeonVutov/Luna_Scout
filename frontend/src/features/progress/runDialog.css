@@ -18,23 +18,36 @@
   animation: run-dialog-in 220ms cubic-bezier(.2, .8, .2, 1);
 }
 
-.run-dialog-head,
-.run-dialog-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px;
-}
-
 .run-dialog-head {
-  border-bottom: 1px solid var(--edge);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 6px;
 }
 
-.run-dialog-head h2 {
+.run-dialog-title {
+  display: grid;
+  gap: 3px;
+}
+
+.run-dialog-title h2 {
   font-size: .95rem;
   font-weight: 640;
   outline: none;
+}
+
+.run-dialog-title p {
+  font-size: .7rem;
+  color: var(--muted);
+}
+
+/* The way out is the most visible button: bordered, while Pause and Cancel stay plain text. */
+.run-dialog-hide {
+  flex: 0 0 auto;
+  gap: 5px;
+  padding-inline: 12px 9px;
+  color: var(--text-strong);
 }
 
 .run-dialog.ready .run-dialog-head h2 {
@@ -42,37 +55,28 @@
 }
 
 .run-dialog-body {
-  display: grid;
-  gap: 10px;
-  padding: 14px 18px;
   overflow-y: auto;
 }
 
 .run-dialog-foot {
+  display: flex;
   justify-content: flex-end;
+  padding: 12px 20px;
   border-top: 1px solid var(--edge);
-}
-
-.run-dialog-foot p {
-  flex: 1;
-  color: var(--muted);
-  font-size: .72rem;
 }
 
 /* One site */
 
+/* A site sits directly on the window; two sites in Compare are divided by a line. */
 .run-card {
   display: grid;
   gap: 8px;
-  padding: 14px;
-  border: 1px solid var(--edge);
-  border-radius: 10px;
-  background: var(--surface-raised);
-  transition: border-color 400ms;
+  padding: 12px 20px 16px;
 }
 
-.run-card.complete {
-  border-color: #3d6352;
+.run-card + .run-card {
+  padding-top: 16px;
+  border-top: 1px solid var(--edge);
 }
 
 .run-card header {

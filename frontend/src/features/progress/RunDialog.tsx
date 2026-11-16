@@ -45,9 +45,12 @@ export function RunDialog({ entries, onHide, onPause, onResume, onCancel }: Dial
 
   return <div className={allReady ? "run-dialog ready" : "run-dialog"} role="dialog" aria-modal="false" aria-labelledby="run-dialog-title">
     <div className="run-dialog-head">
-      <h2 id="run-dialog-title" ref={heading} tabIndex={-1}>{title}</h2>
-      <button className="button quiet" type="button" onClick={onHide}>
-        {allReady ? "Close" : "Hide"} <Icon name="close" size={14} />
+      <div className="run-dialog-title">
+        <h2 id="run-dialog-title" ref={heading} tabIndex={-1}>{title}</h2>
+        {!allReady && <p>Keeps running in the background when hidden.</p>}
+      </div>
+      <button className="button secondary run-dialog-hide" type="button" onClick={onHide}>
+        {allReady ? <>Close <Icon name="close" size={14} /></> : <>Hide <Icon name="chevron" size={15} /></>}
       </button>
     </div>
 
@@ -56,10 +59,8 @@ export function RunDialog({ entries, onHide, onPause, onResume, onCancel }: Dial
         onPause={() => onPause(entry.site)} onResume={() => onResume(entry.site)} onCancel={() => onCancel(entry.site)} />)}
     </div>
 
-    <div className="run-dialog-foot">
-      {allReady
-        ? <button className="button primary" type="button" onClick={onHide}>Show results</button>
-        : <p>You can hide this and keep working. The simulation keeps running.</p>}
-    </div>
+    {allReady && <div className="run-dialog-foot">
+      <button className="button primary" type="button" onClick={onHide}>Show results</button>
+    </div>}
   </div>;
 }
