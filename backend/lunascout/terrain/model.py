@@ -16,6 +16,7 @@ from rasterio.warp import Resampling, reproject, transform_bounds
 
 from ..simulation.frames import (
     LUNAR_FRAME,
+    MAX_SITE_RADIUS_M,
     MOON_RADIUS_M,
     FloatArray,
     SiteFootprint,
@@ -237,14 +238,17 @@ def prepare_terrain(
     )
     _, _, up = local_axes(site.latitude_deg, site.longitude_deg)
     centre = to_polar_gnomonic(up)
+    # The terrain window is the same for every site radius up to the maximum, so all sites at one
+    # centre share terrain, and a horizon computed for one is exact for the others.
+    window = SiteFootprint(site.latitude_deg, site.longitude_deg, max(site.radius_m, MAX_SITE_RADIUS_M))
     # A ray missing the inner shell sweeps at most two tangent arcs before
     # leaving the outer shell. All higher terrain would violate the envelope.
     horizon_angle = 2 * acos(mesh.INNER_RADIUS_M / mesh.OUTER_RADIUS_M) if trace_horizon else 0.0
-    full_bounds = _site_bounds(site, centre, horizon_angle)
+    full_bounds = _site_bounds(window, centre, horizon_angle)
     middle_angle = _REGIONAL_DETAIL_RANGE_M / MOON_RADIUS_M if trace_horizon else 0.0
-    middle_bounds = _site_bounds(site, centre, middle_angle)
+    middle_bounds = _site_bounds(window, centre, middle_angle)
     local_angle = _LOCAL_DETAIL_RANGE_M / MOON_RADIUS_M if trace_horizon else 0.0
-    local_bounds = _site_bounds(site, centre, local_angle)
+    local_bounds = _site_bounds(window, centre, local_angle)
 
     sources: list[TerrainSource] = []
     depths: list[FloatArray] = []

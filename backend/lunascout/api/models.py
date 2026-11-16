@@ -1,13 +1,14 @@
 from pydantic import AwareDatetime, BaseModel, Field, model_validator
 
 from ..simulation.engine import RayMethod, Receiver
+from ..simulation.frames import MAX_SITE_RADIUS_M
 
 
 class SiteSpec(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     latitude_deg: float = Field(ge=-90, le=90)
     longitude_deg: float = Field(ge=-180, le=180)
-    radius_m: int = Field(gt=0)
+    radius_m: int = Field(gt=0, le=MAX_SITE_RADIUS_M)
 
 
 class Site(SiteSpec):

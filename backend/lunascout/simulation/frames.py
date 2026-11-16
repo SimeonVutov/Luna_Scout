@@ -11,6 +11,11 @@ MOON_RADIUS_M = 1_737_400.0
 LUNAR_FRAME = "MOON_ME_DE440_ME421"
 
 
+# Largest site radius the application accepts. Terrain is always prepared for a site this large,
+# so every smaller site at the same centre sees identical terrain and can share horizon maps.
+MAX_SITE_RADIUS_M = 500
+
+
 @dataclass(frozen=True)
 class SiteFootprint:
     """Circular site on the south polar Moon, using east-positive longitude."""

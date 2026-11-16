@@ -35,7 +35,6 @@ class PublicMode:
     enabled: bool = False
     # A bit more than one lunar day (29.5 days), so a full day and night can be compared.
     max_range: timedelta = timedelta(days=35)
-    max_radius_m: int = 500
     min_grid_spacing_m: float = 20.0
     max_solar_disk_samples: int = 61
     # Runs waiting or running at once. The single worker handles them one after another.
@@ -59,8 +58,6 @@ class PublicMode:
             raise HTTPException(422, "The public server needs the site's position with the request.")
         if spec.end_utc - spec.start_utc > self.max_range:
             raise HTTPException(422, f"The public server allows at most {self.max_range.days} days per run.")
-        if spec.site.radius_m > self.max_radius_m:
-            raise HTTPException(422, f"The public server allows a site radius of at most {self.max_radius_m} m.")
         if spec.grid_spacing_m < self.min_grid_spacing_m:
             raise HTTPException(422, f"The public server needs a grid spacing of at least {self.min_grid_spacing_m:g} m.")
         if spec.solar_disk_samples > self.max_solar_disk_samples:
