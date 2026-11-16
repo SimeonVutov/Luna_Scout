@@ -1,0 +1,13 @@
+.run-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 8px;
+  font-size: .71rem;
+  color: var(--muted);
+}
+
+.run-controls span {
+  flex: 1 1 100%;
+}

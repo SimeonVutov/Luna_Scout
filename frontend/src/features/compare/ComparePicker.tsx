@@ -1,5 +1,6 @@
 import type { RunStatus, SimulationOptions, Site } from "../../api/types";
 import { Icon } from "../../Icon";
+import { RunControls } from "../results/RunControls";
 import { isActive } from "../results/useScience";
 import { coordinatesLabel } from "../sites/referenceSites";
 import { slotColor, slotLabel, slots } from "./slots";
@@ -10,12 +11,17 @@ type PickerProps = {
   sites: Site[];
   chosen: Record<Slot, Site | null>;
   runs: Record<Slot, RunStatus | null>;
+  /** Slots whose run this browser paused but that keeps running for another visitor. */
+  pausedForYou: Record<Slot, boolean>;
   options: SimulationOptions;
   submitting: boolean;
   canStart: boolean;
   onAssign: (slot: Slot, id: string | null) => void;
   onSwap: () => void;
   onRun: () => void;
+  onPause: (slot: Slot) => void;
+  onResume: (slot: Slot) => void;
+  onCancel: (slot: Slot) => void;
   onOpenSettings: () => void;
 };
 
@@ -24,7 +30,8 @@ const receiverShort = { vertical_tracking: "Vertical panel", terrain: "Ground", 
 function progress(run: RunStatus | null) {
   if (!run) return null;
   if (run.stage === "failed") return { text: "Failed. Run again to resume.", value: null };
-  if (run.stage === "paused") return { text: "Paused. Run both to resume.", value: run.completed_samples / Math.max(1, run.total_samples) };
+  // A paused run shows its state and a Resume button in its controls instead.
+  if (run.stage === "paused") return null;
   if (run.stage === "complete") return { text: "Complete", value: 1 };
   if (isActive(run)) {
     const text = run.stage === "queued" ? "Queued for worker" : `${run.ready_indices.length} of ${run.total_frames} snapshots ready`;
@@ -62,6 +69,8 @@ export function ComparePicker(props: PickerProps) {
             {state.value !== null && state.value < 1 && <progress aria-label={`Progress for site ${slotLabel[slot]}`} max={1} value={state.value} />}
             <span>{state.text}</span>
           </div>}
+          <RunControls run={runs[slot]} pausedForYou={props.pausedForYou[slot]}
+            onPause={() => props.onPause(slot)} onResume={() => props.onResume(slot)} onCancel={() => props.onCancel(slot)} />
         </div>;
       })}
     </div>

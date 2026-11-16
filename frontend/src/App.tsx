@@ -158,12 +158,12 @@ export function App() {
     void activity.refresh();
   }
 
-  /** Pause, resume or cancel the selected site's simulation, reporting a refusal or failure. */
-  function control(action: (site: Site) => Promise<void>) {
-    if (!selected) return;
+  /** Pause, resume or cancel a site's simulation, reporting a refusal or failure. */
+  function control(action: (site: Site) => Promise<void>, site: Site | null) {
+    if (!site) return;
 
     setError(null);
-    void action(selected).then(() => activity.refresh()).catch((problem) => setError(errorText(problem)));
+    void action(site).then(() => activity.refresh()).catch((problem) => setError(errorText(problem)));
   }
 
   /**
@@ -208,6 +208,9 @@ export function App() {
           onFly={(site) => setCameraTarget({ ...site })} onDelete={deleteSite} onEdit={catalog.edit}
         /> : <ComparePicker sites={sites} chosen={chosen} runs={compareRuns} options={options}
           submitting={submittedSites.some(science.submitting)} canStart={chosen.a !== null && chosen.b !== null && runnableSites.length + pausedSites.length > 0}
+          pausedForYou={{ a: science.pausedForYou(chosen.a), b: science.pausedForYou(chosen.b) }}
+          onPause={(slot) => control(science.pause, chosen[slot])} onResume={(slot) => control(science.resume, chosen[slot])}
+          onCancel={(slot) => control(science.cancel, chosen[slot])}
           onAssign={comparison.assign} onSwap={comparison.swap} onRun={() => void startRuns()} onOpenSettings={() => setSettingsOpen(true)} />}
 
         {!single && compareView === "summary" && <CompareSummary range={range} at={instant} panes={{
@@ -242,8 +245,8 @@ export function App() {
           submitting={submittedSites.some(science.submitting)} reconnecting={science.reconnecting} priorityError={science.priorityError}
           options={options} insight={selectedData.insight.insight} insightLoading={selectedData.insight.loading} insightError={selectedData.insight.error} ice={selectedData.ice}
           pausedForYou={science.pausedForYou(selected)}
-          onRun={() => void startRuns()} onPause={() => control(science.pause)} onResume={() => control(science.resume)}
-          onCancel={() => control(science.cancel)} onOpenSettings={() => setSettingsOpen(true)} canStart={runnableSites.length > 0} />}
+          onRun={() => void startRuns()} onPause={() => control(science.pause, selected)} onResume={() => control(science.resume, selected)}
+          onCancel={() => control(science.cancel, selected)} onOpenSettings={() => setSettingsOpen(true)} canStart={runnableSites.length > 0} />}
       </div>
 
       <Timeline range={range} index={timeIndex} onIndex={setTimeIndex} onRange={changeRange} tracks={tracks} />
