@@ -80,11 +80,11 @@ Maps are cached in `cache/horizons/`. The cache key covers the terrain checksums
 
 | Endpoint | Returns |
 |---|---|
-| `POST /api/runs` | Queues or reuses a run. Identical inputs, including data checksums, share one result. An optional `session` (the browser's random ID) records who started it. |
+| `POST /api/runs` | Queues or reuses a run. Identical inputs, including data checksums, share one result. An optional `session` (the browser's random ID) records that browser as wanting the run. Before each batch, a run copies any samples other runs of the same site and settings computed at its times, so overlapping ranges compute each time once. |
 | `POST /api/runs/lookup` | The run for a request if it exists, and how many of its samples earlier runs of the same site and settings already computed. Starts nothing. |
-| `POST /api/runs/{id}/pause?session=` | Stops computing a run and keeps what it computed. On a public server only the starting session may pause. |
-| `POST /api/runs/{id}/resume` | Continues a paused or failed run from where it stopped. |
-| `DELETE /api/runs/{id}?session=` | Stops a run and deletes what it computed; snapshots shared with other runs stay. On a public server only the starting session may cancel. |
+| `POST /api/runs/{id}/pause?session=` | Pauses this session's request. The run stops only when no session wants it computed; everything computed is kept. |
+| `POST /api/runs/{id}/resume?session=` | Wants the run again and continues it from where it stopped. |
+| `DELETE /api/runs/{id}?session=` | Withdraws this session's request. Deletes nothing: when no session is left the run stops and is hidden, its samples stay for reuse, and it is removed after 14 days if nobody asks for it. |
 | `GET /api/precomputed` | For each NASA reference site, the newest precomputed date range with the website's default settings, and whether it is complete. |
 | `GET /api/runs/{id}` | Progress, ready snapshots and the period summary |
 | `GET /api/runs/events?run_id=…` | Live progress (server-sent events) |

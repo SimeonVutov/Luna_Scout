@@ -145,7 +145,9 @@ The [video tutorial](#video-tutorial) shows the usual steps. A few details it do
 
 **One timeline for every site.** Changing the date range starts a simulation for all saved sites. Only the missing times are computed, because results stored for the same site and settings are reused, and narrowing the range deletes nothing. Long ranges are limited by computing time on the server: choose a coarser **Sample every** in Settings for ranges longer than a few months.
 
-**Pause, resume and cancel.** A running simulation can be paused and resumed later from where it stopped. Cancel deletes what it computed. On a public server only the browser that started a simulation can pause or cancel it, while anyone can resume one.
+**Pause, resume and cancel.** A running simulation can be paused and resumed later from where it stopped. Cancel stops showing it. Both act only on your own browser's request: a simulation another visitor also asked for keeps running for them. Nothing computed is ever deleted by a cancel; it is reused whenever anyone asks for those dates again, and only results nobody has asked for in 14 days are cleaned up.
+
+**Every time is computed once.** Simulations of the same site and settings share their samples, including while they run. When two date ranges overlap, the overlap is computed once and both use it; each computes only its own difference.
 
 **Results follow the request, not the browser.** When you open a site with the same dates and settings as an earlier simulation, from any browser, its results appear without pressing Run. When earlier simulations cover part of your dates, only the rest is computed, and that starts on its own.
 
