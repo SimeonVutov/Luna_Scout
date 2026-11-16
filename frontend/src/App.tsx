@@ -32,7 +32,7 @@ const emptyDraft: SiteSpec = {
   name: "New site",
   latitude_deg: Number.NaN,
   longitude_deg: Number.NaN,
-  radius_m: 500,
+  radius_m: 50,
 };
 
 /** The draft site, once it has a usable position and size; otherwise null. */
