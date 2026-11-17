@@ -8,6 +8,13 @@ export class ApiError extends Error {
   }
 }
 
+/** What to tell a user when the server's reply gives no readable reason. */
+function fallbackMessage(status: number) {
+  if (status === 429) return "Too many requests. Wait a minute and try again.";
+  if (status === 502 || status === 503 || status === 504) return "The server is busy or restarting. Try again in a moment.";
+  return `The server could not complete the request (error ${status}). Try again in a moment.`;
+}
+
 async function send<T>(path: string, method = "GET", body?: unknown, signal?: AbortSignal): Promise<T> {
   let response: Response;
   try {
@@ -25,7 +32,7 @@ async function send<T>(path: string, method = "GET", body?: unknown, signal?: Ab
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = typeof payload?.detail === "string" ? payload.detail : payload?.detail?.[0]?.msg;
-    throw new ApiError(detail ?? "The request could not be completed. Check the API and try again.", response.status);
+    throw new ApiError(detail ?? fallbackMessage(response.status), response.status);
   }
   if (payload === null) throw new Error("The API returned an empty or invalid response.");
   return payload as T;
