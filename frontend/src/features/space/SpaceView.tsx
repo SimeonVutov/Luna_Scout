@@ -17,6 +17,11 @@ import { useSiteRays } from "./useSiteRays";
 import { useSky } from "./useSky";
 import "./space.css";
 
+/** The identity the site being added has in the scene, which no saved site can have. */
+const DRAFT_ID = "draft";
+
+type DraftSite = { name: string; latitude_deg: number; longitude_deg: number; radius_m: number };
+
 const distance = new Intl.NumberFormat("en-GB", { maximumSignificantDigits: 3 });
 
 function coordinate(value: number, positive: string, negative: string) {
@@ -43,7 +48,7 @@ function RayCount({ name, colour, fans, where }: { name: string; colour: string;
  * The Moon stays still and the sky moves around it, so playing the timeline never spins the
  * ground. Zooming toward the south pole loads LOLA terrain in growing detail.
  */
-export function SpaceView({ active, sites, selected, focus, run, range, timeIndex, options, sunlight, context, siteMap, onSelect, layerState, onLayers, compact = false }: {
+export function SpaceView({ active, sites, selected, focus, run, range, timeIndex, options, sunlight, context, siteMap, onSelect, layerState, onLayers, compact = false, draft = null, onPick }: {
   /** Whether the view is on screen; data is only requested while it is. */
   active: boolean;
   sites: Site[];
@@ -67,6 +72,12 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
   onLayers?: (layers: SpaceLayers) => void;
   /** A smaller version for a comparison pane: no title or credits. */
   compact?: boolean;
+  /**
+   * A site being added. Its circle is drawn where it is placed; while one is open (even before it
+   * has a position), a click on the ground reports where with `onPick`.
+   */
+  draft?: DraftSite | null;
+  onPick?: (latitudeDeg: number, longitudeDeg: number) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const labels = useRef<HTMLDivElement>(null);
@@ -75,6 +86,8 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
   const scene = useRef<SpaceScene | null>(null);
   const select = useRef(onSelect);
   select.current = onSelect;
+  const pick = useRef(onPick);
+  pick.current = onPick;
 
   const [ready, setReady] = useState(false);
   const [unsupported, setUnsupported] = useState(false);
@@ -107,8 +120,10 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
             setStanding(mode === "stand");
           }
         },
-        onSelect: (id) => select.current(id),
+        // The site being added has no saved record to select.
+        onSelect: (id) => { if (id !== DRAFT_ID) select.current(id); },
         onProblem: setProblem,
+        onPick: (latitude, longitude) => pick.current?.(latitude, longitude),
       });
       scene.current = view;
       setReady(true);
@@ -122,7 +137,16 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
     }
   }, []);
 
-  useEffect(() => { scene.current?.setSites(sites, selected?.id ?? null); }, [ready, sites, selected]);
+  const placing = draft !== null;
+  const draftSite = draft && Number.isFinite(draft.latitude_deg) && Number.isFinite(draft.longitude_deg)
+    ? { ...draft, id: DRAFT_ID } : null;
+  useEffect(() => {
+    // The site being added is shown as the selected one, so its circle stands out.
+    scene.current?.setSites(draftSite ? [...sites, draftSite] : sites, draftSite ? DRAFT_ID : selected?.id ?? null);
+  // `draftSite` is rebuilt on every render; its values are what matter.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, sites, selected, draftSite?.latitude_deg, draftSite?.longitude_deg, draftSite?.radius_m, draftSite?.name]);
+  useEffect(() => { scene.current?.setPicking(placing); }, [ready, placing]);
   useEffect(() => { if (active) scene.current?.invalidate(); }, [ready, active]);
   useEffect(() => { scene.current?.setSunShading(shading); }, [ready, shading]);
   useEffect(() => { scene.current?.setExaggeration(exaggeration); }, [ready, exaggeration]);
@@ -161,7 +185,8 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
   }
 
   const rayHint = !selected ? "Select a site to see its rays" : !supported ? "Rays are available for sites south of 60°S" : undefined;
-  return <section className={compact ? "viewport space-viewport space-compact" : "viewport space-viewport"} aria-label="3D view of the Moon, the Sun and Earth">
+  const viewportClass = ["viewport", "space-viewport", compact && "space-compact", placing && "space-placing"].filter(Boolean).join(" ");
+  return <section className={viewportClass} aria-label="3D view of the Moon, the Sun and Earth">
     <div className="space-canvas" ref={host} />
     <div className="space-labels" ref={labels} />
     <div className="space-title">
@@ -211,6 +236,7 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
       <div className="space-bottom">
         {problem && <p role="alert">{problem}</p>}
         {!sample && <p role="status">{sky.error ?? "Loading the Sun and Earth positions…"}</p>}
+        {placing && <p role="status">Click the ground to place the site centre</p>}
         <ControlsHint standingOnSurface={standing} />
       </div>
       <div className="map-credits">

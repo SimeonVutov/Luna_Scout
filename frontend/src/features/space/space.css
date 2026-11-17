@@ -10,6 +10,10 @@
   cursor: grab;
 }
 
+.space-placing .space-canvas canvas {
+  cursor: crosshair;
+}
+
 .space-canvas canvas:active {
   cursor: grabbing;
 }

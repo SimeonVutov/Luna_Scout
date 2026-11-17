@@ -2,7 +2,8 @@ import { CanvasTexture, NearestFilter, PerspectiveCamera, SRGBColorSpace, Scene,
 import type { SiteSpec } from "../../api/types";
 import { CameraRig } from "./cameraRig";
 import type { RigView } from "./cameraRig";
-import { MOON_RADIUS_KM, latLonToUnit, siteAxes } from "./geodesy";
+import { MOON_RADIUS_KM, latLonToUnit, siteAxes, unitToLatLon } from "./geodesy";
+import { attachGroundTap } from "./groundTap";
 import { RayLayer } from "./rayLayer";
 import type { RayToggles } from "./rayLayer";
 import { SceneLabels } from "./sceneLabels";
@@ -29,6 +30,8 @@ export type SceneCallbacks = {
   onView: (view: RigView) => void;
   onSelect: (id: string) => void;
   onProblem: (message: string | null) => void;
+  /** A click on the ground while placing a site, with the point's position in degrees. */
+  onPick: (latitudeDeg: number, longitudeDeg: number) => void;
 };
 
 /**
@@ -49,6 +52,7 @@ export function spaceScene(host: HTMLDivElement, labelLayer: HTMLDivElement, cal
   let rays: ShownRays | null = null;
   let rayToggles: RayToggles = { sun: false, earth: false };
   let overlayTexture: CanvasTexture | null = null;
+  let picking = false;
 
   function invalidate() {
     if (frameRequested || disposed) return;
@@ -68,6 +72,15 @@ export function spaceScene(host: HTMLDivElement, labelLayer: HTMLDivElement, cal
   const labels = new SceneLabels(labelLayer, camera, groundKm, {
     onFaceBody: (body) => rig.faceToward((body === "sun" ? sky.sun : sky.earth).position.clone().sub(camera.position)),
     onSelectSite: callbacks.onSelect,
+  });
+
+  // While a site is being placed, a click on the ground names its centre.
+  const stopTap = attachGroundTap(renderer.domElement, (x, y) => {
+    const unit = picking ? rig.pick(x, y) : null;
+    if (!unit) return;
+
+    const { latitude, longitude } = unitToLatLon(unit);
+    callbacks.onPick(Number(latitude.toFixed(6)), Number(longitude.toFixed(6)));
   });
 
   function frame(now: number) {
@@ -196,12 +209,18 @@ export function spaceScene(host: HTMLDivElement, labelLayer: HTMLDivElement, cal
       rig.leaveStand();
     },
 
+    /** Turn site placing on or off: a click on the ground then reports its position. */
+    setPicking(on: boolean) {
+      picking = on;
+    },
+
     invalidate,
 
     dispose() {
       disposed = true;
       observer.disconnect();
 
+      stopTap();
       rig.dispose();
       rayLayer.dispose();
       tiles.dispose();
