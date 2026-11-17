@@ -108,6 +108,9 @@ class RunLookup(BaseModel):
     # Samples that earlier runs of the same site and settings already computed for this range.
     reusable_samples: int
     total_samples: int
+    # Seconds the rest should take on this server, from the timings it has learned; 0 when nothing
+    # is left to compute.
+    estimated_seconds: float = 0.0
 
 
 # The request recorded for callers without a browser session, such as a private server's CLI.
@@ -293,11 +296,33 @@ class RunQueue:
             row = self._find(db, plan.identity())
             if row is not None and not row["abandoned"]:
                 status = self._status(db, row)
-                return RunLookup(run=status, reusable_samples=status.completed_samples, total_samples=status.total_samples)
+                remaining = status.progress.remaining_s if status.progress else 0.0
+                return RunLookup(
+                    run=status, reusable_samples=status.completed_samples,
+                    total_samples=status.total_samples, estimated_seconds=remaining,
+                )
             new_indices = {new_index for _, _, new_index, _ in self._aligned_samples(db, plan.identity(), plan)}
             if row is not None:
                 new_indices |= {item[0] for item in db.execute("SELECT sample_index FROM readings WHERE run_id = ?", (row["run_id"],))}
-        return RunLookup(run=None, reusable_samples=len(new_indices), total_samples=plan.interval_count + 1)
+
+        reusable = len(new_indices)
+        total = plan.interval_count + 1
+        return RunLookup(
+            run=None, reusable_samples=reusable, total_samples=total,
+            estimated_seconds=self._seconds_to_compute(plan, reusable) if reusable < total else 0.0,
+        )
+
+    def _seconds_to_compute(self, plan: RunPlan, reusable: int) -> float:
+        """How long a run with `reusable` samples already known should take, alone on the worker."""
+        site = plan.site
+        _, seconds = estimate(
+            plan, completed_samples=reusable, reused_samples=reusable, state=ProgressState(), model=self._model(),
+            saved_horizon_points=saved_point_count(
+                self.directory.parent / "cache" / "horizons", site_label(site.latitude_deg, site.longitude_deg)
+            ),
+            now_ns=time_ns(),
+        )
+        return round(seconds, 1)
 
     def _aligned_samples(
         self, db: sqlite3.Connection, run_id: str, plan: RunPlan

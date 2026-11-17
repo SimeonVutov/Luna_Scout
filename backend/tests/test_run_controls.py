@@ -8,6 +8,7 @@ from test_science_regression import _compute_all, _hourly_plan, _reading
 
 from lunascout.api.public import PublicMode
 from lunascout.api.science import science_router
+from lunascout.jobs.metrics import integrate
 from lunascout.jobs.scheduler import RunPaused, RunQueue, WorkBatch
 
 START = datetime(2026, 12, 1, tzinfo=UTC)
@@ -155,3 +156,21 @@ def test_processes_starting_together_upgrade_an_old_database_once(tmp_path):
 def _initialize(data_dir) -> str:
     RunQueue(data_dir).initialize()
     return "ok"
+
+
+def test_lookup_says_how_long_the_missing_part_should_take(tmp_path):
+    queue = _queue(tmp_path)
+    first_day = _hourly_plan(START, 24)
+    queue.submit(first_day, session="browser-a")
+    _compute_all(queue, first_day)
+    queue.complete(first_day.identity(), integrate(queue.readings(first_day.identity())))
+
+    covered = queue.lookup(first_day)
+    assert covered.run is not None and covered.estimated_seconds == 0.0
+
+    # Two days asked for, one known: only the second day is left to compute.
+    two_days = queue.lookup(_hourly_plan(START, 48))
+    assert two_days.reusable_samples < two_days.total_samples and two_days.estimated_seconds > 0
+    # Nothing known costs more than half known.
+    nothing = queue.lookup(_hourly_plan(START, 48, solar_disk_samples=10))
+    assert nothing.reusable_samples == 0 and nothing.estimated_seconds > two_days.estimated_seconds
