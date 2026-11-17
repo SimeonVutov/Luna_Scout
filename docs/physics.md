@@ -94,7 +94,7 @@ Terrain does not move. Only the Sun and Earth do. So for every grid point, once,
 
 For a point, the skyline $h(\alpha)$ is the largest elevation angle $\varepsilon$ of any terrain seen in direction $\alpha$ (azimuth). A ray towards elevation $\varepsilon$ and azimuth $\alpha$ is then classified by comparing the two:
 
-$$\text{ray} = \begin{cases} \text{clear} & \varepsilon > h(\alpha) + \delta \\ \text{blocked} & \varepsilon < h(\alpha) - \delta \\ \text{traced exactly} & \text{otherwise} \end{cases} \qquad \delta = 0.05^\circ$$
+$$\text{ray} = \begin{cases} \text{clear} & \varepsilon \gt h(\alpha) + \delta \\ \text{blocked} & \varepsilon \lt h(\alpha) - \delta \\ \text{traced exactly} & \text{otherwise} \end{cases} \qquad \delta = 0.05^\circ$$
 
 - A ray **above** the skyline is clear. A ray **below** is blocked.
 - A ray within $\delta = 0.05^\circ$ of the skyline is too close to call from a table, so it is traced exactly with the full ray tracer.
@@ -109,11 +109,11 @@ This is the method behind NASA's own LOLA illumination maps (Mazarico et al. 201
 | Shackleton Rim | 44 s | 21 ms | 15.6× |
 | Connecting Ridge | 66 s | 12 ms | 34.5× |
 
-With a build time $B$, a time $p$ per timestamp with horizon maps and $p_d$ without them, the time for $n$ timestamps is $B + p\,n$ against $p_d\,n$, so the build pays for itself once
+With a build time $B$, a time $p$ per timestamp with horizon maps and $p_{d}$ without them, the time for $n$ timestamps is $B + p\,n$ against $p_{d}\,n$, so the build pays for itself once
 
-$$n > \frac{B}{p_d - p} \qquad\Longrightarrow\qquad n^{*}_{\text{Shackleton}} \approx \frac{44}{0.328 - 0.021} \approx 143, \quad n^{*}_{\text{Connecting}} \approx \frac{66}{0.414 - 0.012} \approx 164$$
+$$n \gt \frac{B}{p_{d} - p} \qquad\Longrightarrow\qquad n_{\text{Shackleton}}^{\ast} \approx \frac{44}{0.328 - 0.021} \approx 143, \quad n_{\text{Connecting}}^{\ast} \approx \frac{66}{0.414 - 0.012} \approx 164$$
 
-where $p_d$ is the measured $p$ times the speed-up factor in the table. A two-month run has about 5,800 timestamps, so the build is a small cost. The dashed lines in the chart are drawn from the same numbers.
+where $p_{d}$ is the measured $p$ times the speed-up factor in the table. A two-month run has about 5,800 timestamps, so the build is a small cost. The dashed lines in the chart are drawn from the same numbers.
 
 **Skylines are shared.** One file is kept per site *centre*, not per run. A smaller radius at the same centre, a different date range, or a different visitor all reuse it. The file is keyed by the terrain data and the receiver heights, so a change to either rebuilds it automatically. Pure ray tracing is still available as `ray_method: "direct"`, mainly for testing.
 
@@ -161,7 +161,7 @@ flowchart LR
 
 Each bisection halves the interval that contains the event, so after $k$ steps it is known to within
 
-$$\Delta t_k = \frac{60\ \mathrm{s}}{2^{k}}, \qquad \Delta t_6 = \frac{60}{64}\ \mathrm{s} < 1\ \mathrm{s}$$
+$$\Delta t_k = \frac{60\ \mathrm{s}}{2^{k}}, \qquad \Delta t_6 = \frac{60}{64}\ \mathrm{s} \lt 1\ \mathrm{s}$$
 
 Interpolating positions over 15 minutes costs less than $0.0001^\circ$ of error. An event shorter than one minute can still be missed between two scans.
 
