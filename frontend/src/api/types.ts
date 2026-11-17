@@ -49,6 +49,8 @@ export type RunLookup = {
   /** Samples that earlier runs of the same site and settings computed for this range. */
   reusable_samples: number;
   total_samples: number;
+  /** Seconds the missing part should take on the server; 0 when nothing is left to compute. */
+  estimated_seconds: number;
 };
 
 export type Bounds = { lower: number; upper: number };

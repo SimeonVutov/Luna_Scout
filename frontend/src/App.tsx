@@ -26,6 +26,8 @@ import { defaultSpaceLayers } from "./features/space/layers";
 import { Timeline } from "./features/timeline/Timeline";
 import type { ReadyTrack } from "./features/timeline/Timeline";
 import { snapshotAt, todayRange } from "./features/timeline/time";
+import { ExtendDialog } from "./features/timeline/ExtendDialog";
+import { useRangeChange } from "./features/timeline/useRangeChange";
 import { TopBar } from "./TopBar";
 import type { CompareView, Mode, View } from "./TopBar";
 import { Icon } from "./Icon";
@@ -88,6 +90,14 @@ export function App() {
     run: science.status(site),
     pausedForYou: science.pausedForYou(site),
   }));
+
+  const rangeChange = useRangeChange({
+    sites, options,
+    apply: (next) => { setTimeIndex(0); setRange(next); },
+    run: (site, target, priorityAt) => science.run(site, target, priorityAt),
+    onStarted: (started) => { progress.show(started); void activity.refresh(); },
+    onProblems: setError,
+  });
 
   const selectedRun = science.status(selected);
   const compareRuns: Record<Slot, RunStatus | null> = { a: science.status(chosen.a), b: science.status(chosen.b) };
@@ -177,27 +187,6 @@ export function App() {
     void action(site).then(() => activity.refresh()).catch((problem) => setError(errorText(problem)));
   }
 
-  /**
-   * One timeline for every site: changing it starts, for all saved sites, whatever the new
-   * range is missing. Earlier results stay stored when the range shrinks.
-   */
-  function changeRange(next: TimeRange) {
-    setTimeIndex(0);
-    setRange(next);
-
-    const supported = sites.filter((site) => site.latitude_deg <= -60);
-    if (!supported.length) return;
-
-    const first = snapshotAt(next, 0).toISOString();
-    void Promise.allSettled(supported.map((site) => science.run(site, next, first))).then((results) => {
-      const problems = results.flatMap((result, index) =>
-        result.status === "rejected" ? [`${supported[index].name} · ${errorText(result.reason)}`] : []);
-
-      setError(problems.length ? problems.join(" ") : null);
-      void activity.refresh();
-    });
-  }
-
   return (
     <main className="workspace">
       <TopBar mode={mode} onMode={chooseMode} view={view} onView={setView}
@@ -261,7 +250,10 @@ export function App() {
           onOpenSettings={() => setSettingsOpen(true)} canStart={runnableSites.length > 0} />}
       </div>
 
-      <Timeline range={range} index={timeIndex} onIndex={setTimeIndex} onRange={changeRange} tracks={tracks} />
+      <Timeline range={range} index={timeIndex} onIndex={setTimeIndex} onRange={(next) => void rangeChange.request(next)} tracks={tracks} />
+
+      {rangeChange.pending && <ExtendDialog range={rangeChange.pending.range} missing={rangeChange.pending.missing}
+        onCompute={() => void rangeChange.confirm()} onKeepPrevious={rangeChange.keepPrevious} />}
 
       {progress.open && <RunDialog entries={progress.entries} onHide={progress.hide}
         onPause={(site) => control(science.pause, site)} onResume={(site) => control(science.resume, site)}

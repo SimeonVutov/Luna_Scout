@@ -5,6 +5,15 @@ const dayMs = 24 * hourMs;
 const dayFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 const clockFormat = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC", hourCycle: "h23" });
 
+/** "3 Dec 2026" for one day, "3 Dec 2026 – 9 Dec 2026" for several. */
+export function rangeLabel(range: TimeRange) {
+  const first = snapshotAt(range, 0);
+  const last = snapshotAt(range, snapshotCount(range) - 1);
+  return first.toISOString().slice(0, 10) === last.toISOString().slice(0, 10)
+    ? dateLabel(first)
+    : `${dateLabel(first)} – ${dateLabel(last)}`;
+}
+
 export function rangeForDates(first: string, last: string): TimeRange {
   const start = Date.parse(`${first}T00:00:00Z`);
   const lastDay = Date.parse(`${last}T00:00:00Z`);

@@ -1,0 +1,87 @@
+.extend-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #06090d99;
+}
+
+.extend-dialog {
+  display: grid;
+  gap: 12px;
+  width: min(460px, 100%);
+  max-height: calc(100vh - 32px);
+  padding: 22px 22px 18px;
+  overflow-y: auto;
+  border: 1px solid var(--overlay-edge);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 18px 50px #000a;
+  animation: extend-in 200ms cubic-bezier(.2, .8, .2, 1);
+}
+
+.extend-dialog h2 {
+  font-size: 1rem;
+  font-weight: 640;
+  color: var(--text-strong);
+}
+
+.extend-dialog p {
+  font-size: .78rem;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+.extend-list {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--edge);
+}
+
+.extend-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  font-size: .8rem;
+  border-bottom: 1px solid var(--edge);
+}
+
+.extend-list strong {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.extend-list span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.extend-dialog .extend-total {
+  margin-top: -4px;
+  text-align: right;
+  color: var(--muted);
+}
+
+.extend-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+@keyframes extend-in {
+  from { opacity: 0; transform: translateY(8px) scale(.98); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .extend-dialog {
+    animation: none;
+  }
+}
