@@ -98,7 +98,11 @@ flowchart LR
 The estimate of time left is **learned from this server's own work**, not guessed:
 
 1. After every stage, the worker records how long it took and how much work it was (grid points, samples, days).
-2. Each kind of work is modelled as `time = fixed cost + cost per unit × units`, fitted to the last 40 observations, so the model follows changes.
+2. Each kind of work is modelled as a fixed cost plus a cost per unit of work, fitted to the last 40 observations so the model follows changes:
+
+   $$t = a + b\,n \qquad\text{and}\qquad t_{\text{left}} = \sum_{\text{stages not done}} \left(a_s + b_s\,n_s\right)$$
+
+   where $n$ is the amount of work (grid points, points of skyline to build, samples, days) and $a$, $b$ are the fixed and per-unit costs learned for that kind of work.
 3. Observations are kept **per CPU count**. Resize the server from 8 cores to 2 and it starts a new, empty model instead of promising 8-core times.
 4. Until a server size has been measured, the estimate is scaled from another size or from typical values, and the window says how reliable it is.
 5. If several visitors' runs are being computed, the time left includes the share of the server they take, and the window says "Sharing the server with N other simulations".
