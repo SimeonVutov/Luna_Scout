@@ -124,9 +124,8 @@ export function App() {
   }
 
   function startAddingSite() {
-    // A new site is placed by clicking the flat map.
+    // A new site is placed by clicking the ground, in 3D or on the flat map.
     setMode("single");
-    setView("2d");
     setDraft({ ...emptyDraft, name: `Site ${sites.length + 1}` });
   }
 
@@ -246,7 +245,7 @@ export function App() {
           <div className="stage-view" hidden={!inSpace}>
             <Suspense fallback={<div className="stage-status" role="status">Opening the 3D view…</div>}>
               <SpaceView active={inSpace && single} sites={sites} selected={selected} focus={cameraTarget} run={selectedRun}
-                layerState={spaceLayers} onLayers={setSpaceLayers}
+                layerState={spaceLayers} onLayers={setSpaceLayers} draft={draft} onPick={(latitude_deg, longitude_deg) => placeDraft({ latitude_deg, longitude_deg })}
                 range={range} timeIndex={timeIndex} options={options} sunlight={sunlight} context={selectedData.context} siteMap={selectedData.siteMap} onSelect={catalog.select} />
             </Suspense>
           </div>
