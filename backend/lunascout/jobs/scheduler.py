@@ -440,9 +440,11 @@ class RunQueue:
 
     @staticmethod
     def _runs_of_site(db: sqlite3.Connection, latitude_deg: float, longitude_deg: float, radius_m: float) -> list[str]:
+        """Runs a visitor asked for at this site. Precomputed runs are the server's own, so deleting a
+        saved site, which may share their centre, never stops, hides or removes them."""
         return [
             row["run_id"]
-            for row in db.execute("SELECT run_id, plan FROM runs").fetchall()
+            for row in db.execute("SELECT run_id, plan FROM runs WHERE background = 0").fetchall()
             if _same_site(RunPlan.model_validate_json(row["plan"]), latitude_deg, longitude_deg, radius_m)
         ]
 

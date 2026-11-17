@@ -82,3 +82,23 @@ def test_the_default_precompute_reaches_the_end_of_next_month():
     assert _end_of_next_month(date(2026, 11, 16)) == date(2026, 12, 31)
     assert _end_of_next_month(date(2026, 12, 5)) == date(2027, 1, 31)
     assert _end_of_next_month(date(2027, 1, 31)) == date(2027, 2, 28)
+
+
+def test_deleting_a_saved_site_never_touches_the_precomputed_runs_at_its_centre(tmp_path):
+    queue = RunQueue(tmp_path)
+    queue.initialize()
+    background = _hourly_plan(START, 24)
+    queue.submit(background, session="precompute", background=True)
+    visitor = _hourly_plan(START, 3, solar_disk_samples=10)
+    queue.submit(visitor, session="browser-one")
+
+    site = background.site
+    # Keeping the results of a deleted reference site hides the visitor's run only.
+    assert queue.keep_site(site.latitude_deg, site.longitude_deg, site.radius_m) == 1
+    assert queue.status(background.identity()).stage == "queued"
+    assert background.identity() in [run.run_id for run in queue.list_runs()]
+    assert queue.status(visitor.identity()).stage == "failed"
+
+    # Removing the site's results outright leaves the precompute alone too.
+    assert queue.purge_site(site.latitude_deg, site.longitude_deg, site.radius_m) == 1
+    assert queue.status(background.identity()) is not None
