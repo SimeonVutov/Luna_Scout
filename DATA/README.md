@@ -1,109 +1,60 @@
-# Data and science notes
+# Data layout
 
-This folder holds the NASA inputs, the caches and the simulation outputs. `uv run lunascout-science fetch-data` (run from `backend/`) downloads everything that is missing.
+This folder holds the NASA inputs, the caches and the simulation outputs. Run `uv run lunascout-science fetch-data` from `backend/` to download everything that is missing. To keep the data elsewhere, set `LUNASCOUT_DATA_DIR`.
 
-## Contents
+```mermaid
+flowchart TB
+    subgraph raw["raw/ · NASA inputs, downloaded once"]
+        spice["spice/ · ephemeris and Moon orientation"]
+        terrain["terrain/ · LOLA elevation maps"]
+        context["context/ · NASA illumination maps, Diviner"]
+    end
+    subgraph cache["cache/ · rebuilt if lost, only slower"]
+        hz["horizons/ · skyline per site centre"]
+        tiles["terrain_tiles/ · 3D view tiles"]
+        perf["performance.json · learned timings"]
+    end
+    subgraph out["runs/ · what visitors asked for"]
+        db[("queue.sqlite3")]
+        res["one folder per run, a grid file per hour"]
+    end
+    logs["logs/ · ephemeris-check.log"]
+```
+
+| Safe to delete? | Folder | Consequence |
+|---|---|---|
+| Yes, but it is re-downloaded | `raw/` | About 2 GB to fetch again |
+| Yes | `cache/` | Skylines, tiles and timings are rebuilt. The next runs are slower and estimates are rough until it relearns |
+| **No** | `runs/` | Deletes every saved simulation |
+
+## What is in it
 
 | Path | What | Source |
 |---|---|---|
-| `raw/spice/` | `naif0012.tls` (leap seconds), `moon_de440_250416.tf` + `moon_pa_de440_200625.bpc` (lunar orientation), `de440s.bsp` (JPL DE440 positions of the Sun, Earth and Moon, 1849–2150) | NASA NAIF |
+| `raw/spice/` | `naif0012.tls` (leap seconds), `moon_de440_250416.tf` and `moon_pa_de440_200625.bpc` (lunar orientation), `de440s.bsp` (positions of the Sun, Earth and Moon, 1849–2150) | NASA NAIF |
 | `raw/terrain/LDEM_60S_240MPP_ADJ.TIF` | 240 m LOLA, 60°S–90°S: far-field horizon | NASA Goddard PGDA |
 | `raw/terrain/LDEM_80S_80MPP_ADJ.TIF` | 80 m LOLA, used within about 120 km of a site | NASA Goddard PGDA |
 | `raw/terrain/*_final_adj_5mpp_surf.tif` | 5 m LOLA for 10 candidate sites (below) | NASA Goddard PGDA |
-| `cache/horizons/` | Terrain horizon maps, one file per site centre. Each point's horizon is built once and shared by every site radius at that centre | computed |
-| `runs/` | Run queue (`queue.sqlite3`) and per-timestamp result grids | computed |
-| `cache/performance.json` | How long each stage of a simulation took on this server, per CPU count, from the last 40 runs of each kind. Used to estimate time left | computed |
-| `logs/ephemeris-check.log` | One line per `check-ephemeris` run: the largest SPICE–Horizons difference | computed |
+| `raw/context/` | NASA's long-term illumination products (`AVGVISIB_*`, `LPSR_*`, `SKYV_*`, about 150 MB) and `diviner_prp_south.npz` (58 MB) | NASA Goddard PGDA, NASA PDS |
+| `cache/horizons/` | Terrain skyline maps, one file per site centre, shared by every radius at that centre | computed |
+| `cache/terrain_tiles/` | Elevation tiles served to the 3D view | computed |
+| `cache/performance.json` | How long each stage took on this server, per CPU count, from the last 40 runs of each kind. Used for the time left | computed |
+| `runs/queue.sqlite3` | The run queue and who wants each run | computed |
+| `runs/<run id>/` | Per-hour result grids, site map, saved rays | computed |
+| `logs/ephemeris-check.log` | One line per monthly check: the largest SPICE–Horizons difference | computed |
 
-The 5 m sites are Connecting Ridge (`Site01`), Shackleton Rim (`Site04`), Nobile Rim 1 (`Site06`), Peak near Shackleton (`Site07`), de Gerlache Rim (`Site11`), Leibnitz Beta Plateau (`Site20`), Malapert Massif (`Site23`), Haworth, Shoemaker, and Nobile Rim 2 (`DM2`).
+The ten 5 m sites are Connecting Ridge (`Site01`), Shackleton Rim (`Site04`), Nobile Rim 1 (`Site06`), Peak near Shackleton (`Site07`), de Gerlache Rim (`Site11`), Leibnitz Beta Plateau (`Site20`), Malapert Massif (`Site23`), Haworth, Shoemaker, and Nobile Rim 2 (`DM2`).
 
-## Key decisions
+## Notes on the files
 
-### Sun and Earth positions: SPICE with JPL DE440
+- **Why 5 m tiles are loaded only near a site.** Beyond 60 km an 80 m posting subtends less than 0.08°, against the Sun's 0.53°, while loading every 5 m tile would take more than 1 GB of memory.
+- **Skyline cache keys.** A map is keyed by the terrain checksums, the receiver heights and the method revision, so changing any of them rebuilds it. Maps built before sites were labelled cannot be matched to a site and are never removed automatically.
+- **Run folders share files.** When a run copies samples from an earlier run, the snapshot files are hard-linked, not duplicated, so overlapping runs cost almost no disk.
+- **Diviner table.** `fetch-data` downloads NASA's 605 MB `dlre_prp_south.tab`, cuts it to a 58 MB file with each triangle's annual mean temperature (2 cm depth), annual maximum surface temperature and ice depth, and deletes the original. In the table `-999` means no ice is stable within 2.87 m; it also holds an undocumented `-1` in the coldest triangles, which LunaScout reads as ice stable at the surface.
+- **Lifetime of results.** A custom site's results are removed when you delete it. A reference site's are hidden and kept 14 days. Results nobody has asked for in 14 days are cleaned up when the worker starts. See [Runs, reuse and the queue](../docs/runs.md).
 
-- NAIF SPICE computes Moon-centred positions of the Sun and Earth from JPL's DE440 ephemeris (`de440s.bsp`), converts UTC to TDB, and rotates them into `MOON_ME_DE440_ME421`. That frame is within about 0.5 m of the DE421 frame the DEMs use.
-- Lunar libration comes from the time-varying orientation kernel, so no separate libration model is needed.
-- Light-time and aberration are applied at the Moon's centre (`LT+S`). The error this introduces at a surface site is below 0.003″.
-- **Why SPICE, not live Horizons requests:** positions are computed on the server in microseconds, for any date from 1849 to 2150, with no network or rate limit. JPL Horizons serves the same ephemeris family (it reports DE441). Over 2026–2028 the two agree to within 35 m for the Sun and 5 m for Earth, about 0.00005″ and 0.0025″ seen from the Moon. In a test over 10 snapshots at two sites, no point's result changed.
-- **Monthly check:** `uv run lunascout-science check-ephemeris` compares SPICE with Horizons at 12 epochs over the next 60 days and appends the largest difference to `logs/ephemeris-check.log`. It exits with code 1, and logs a warning, if a difference exceeds 1 km or Horizons cannot be reached. It needs `LUNASCOUT_HORIZONS_CONTACT`, which JPL asks automated clients to set; nothing else uses Horizons.
+## Where to read more
 
-### Terrain: curved, triangulated, multi-resolution
-
-- All DEMs are reprojected into one south-polar gnomonic grid. Each grid cell is split into two planar triangles on the curved Moon (radius 1,737,400 m).
-- Where grids overlap, the finest one is used. Edges are stitched so no false walls appear at seams.
-- 5 m tiles are loaded only within 60 km of a site. Beyond that, an 80 m posting subtends less than 0.08°, compared with the 0.53° solar disk, while loading every tile would hold more than 1 GB in memory.
-- Missing terrain is never assumed clear. Rays crossing it are reported as **unresolved**, and the results carry lower and upper bounds.
-
-### Sunlight: finite Sun disk
-
-- Each grid box casts 37 equal-solid-angle rays across the Sun's apparent disk. At the pole the Sun skims the horizon, so a ridge often hides only part of it. In our tests, a single centre ray reported 86% of Shackleton lit where the full disk gives 96%.
-- Irradiance uses 1361 W/m² at 1 AU, scaled by inverse-square distance and by each ray's angle to the receiver. Earth eclipses are masked per ray.
-- **Receivers.** The default is a vertical panel that turns toward the Sun, 2 m above the ground, as on real polar landers. At Shackleton it collects about 24 kWh/m² per day, compared with 13 on the ground and 0.7 on a horizontal plate.
-- Two "lit" definitions are reported: any part of the Sun visible, and at least half of the disk visible.
-
-### Terrain detail, slope and the skyline
-
-- **Detail is reported, not assumed.** The solver runs anywhere from 60°S to 90°S, but the terrain under a site is 5 m only inside the ten grids, 80 m inside 80°S and 240 m beyond. Each site reports the share of its area from each source, and a site on coarse terrain is flagged as approximate.
-- **Slope** is a central difference of terrain height between grid neighbours, over a baseline of twice the grid spacing (40 m at the default 20 m grid). It is a smoothed slope, gentler than the 5 m posting would give. At Shackleton the mean is 32.7°, close to the 31.5° read directly from NASA's 5 m grid at the centre.
-- **Lit and gentle** counts a point when at least half the Sun is visible and its slope is at most 10°, the limit used in NASA-supported landing-site studies. Missing data widens the upper bound.
-- **Skyline** is the exact terrain horizon from the site centre in 3,600 directions (0.1°), at the panel height and at the mast height, from the same triangulated terrain as the ray tracer. It does not depend on time, so the browser draws the Sun and Earth against it as the timeline moves. The visible share of a disk comes from the geometry, not from sampled rays.
-
-### Sharing results between date ranges
-
-- A run is identified by its site, settings, data checksums and dates. Its **physics key** is the same thing without the dates, so runs that differ only in range compute identical samples at identical times.
-- Submitting a run first copies the matching samples from earlier runs, with their snapshot files hard-linked rather than duplicated. The worker then computes only the gaps. A 3-day run over a finished 1-day run reused 96 of its 289 samples, and the reused day's totals were identical to the original to the last digit.
-- The old closing endpoint of a range is recomputed when it becomes an interior snapshot hour, since the shorter run never produced a snapshot file for it.
-- **Deleting a site:** a custom site's runs, snapshot files and horizon map are removed. A reference site's runs are hidden and kept for 14 days. Submitting a run for it again restores what falls inside the new range and then discards the kept runs, so data outside the timeline does not accumulate.
-- Horizon maps built before sites were labelled cannot be matched to a site and are never removed automatically.
-
-### Earth visibility
-
-- A ray from a mast at the site centre to Earth's centre decides whether Earth is visible. 37 rays across Earth's disk give the visible fraction.
-- This is line-of-sight geometry only. It does not include a radio link budget or ground-station schedules.
-
-### Speed: terrain horizon maps
-
-Terrain does not move, so for each grid box we compute its skyline once: the highest terrain angle in 720 directions, measured exactly on the triangulated surface. At each timestamp, a ray is clear if it rises above the skyline and blocked if it passes below. Rays within 0.05° of the skyline are re-traced with the full ray tracer. This is the horizon method behind NASA's LOLA illumination maps (Mazarico et al. 2011).
-
-| Site (1,961 boxes, 193 timestamps) | Build once | Per timestamp | Speed-up | Differences from direct tracing |
-|---|---|---|---|---|
-| Shackleton Rim | 44 s | 21 ms | 15.6× | 0 of 378,473 box-timestamps |
-| Connecting Ridge | 66 s | 12 ms | 34.5× | 0 of 378,473 box-timestamps |
-
-Maps are cached in `cache/horizons/`. The cache key covers the terrain checksums, the receiver positions and the method revision, so any change triggers a rebuild. Pure ray tracing remains available as `ray_method: "direct"`.
-
-### Time
-
-- Area metrics are sampled at the integration cadence (15 min by default) and integrated with trapezoids, split at UTC midnights.
-- Sun and Earth windows at the site centre are scanned every minute between ephemeris samples, then refined by bisection to about 1 s. Interpolating positions over a 15-minute step introduces an error below 0.0001°.
-
-## Run API
-
-| Endpoint | Returns |
-|---|---|
-| `POST /api/runs` | Queues or reuses a run. Identical inputs, including data checksums, share one result. An optional `session` (the browser's random ID) records that browser as wanting the run. Before each batch, a run copies any samples other runs of the same site and settings computed at its times, so overlapping ranges compute each time once. |
-| `POST /api/runs/lookup` | The run for a request if it exists, how many of its samples earlier runs of the same site and settings already computed, and how long the rest should take (`estimated_seconds`, from the timings this server has learned). Starts nothing. |
-| `POST /api/runs/{id}/pause?session=` | Pauses this session's request. The run stops only when no session wants it computed; everything computed is kept. |
-| `POST /api/runs/{id}/resume?session=` | Wants the run again and continues it from where it stopped. |
-| `DELETE /api/runs/{id}?session=` | Withdraws this session's request. Deletes nothing: when no session is left the run stops and is hidden, its samples stay for reuse, and it is removed after 14 days if nobody asks for it. |
-| `GET /api/precomputed` | For each NASA reference site, the newest precomputed date range with the website's default settings, and whether it is complete. |
-| `GET /api/runs/{id}` | Progress, ready snapshots and the period summary. While waiting, running or paused, `progress` lists the stages (preparing, horizons, snapshots, windows) with each one's state, estimated seconds and share done, and the seconds left, including time shared with other visitors' runs |
-| `GET /api/runs/events?run_id=…` | Live progress (server-sent events) |
-| `GET /api/runs/{id}/snapshots/{index}` | One hour's metrics, sunlight grid and Earth line-of-sight grid (fraction of Earth's disk seen from mast height per point; absent before model revision 5) |
-| `GET /api/runs/{id}/series` | Sun and Earth angles and metrics per published hour |
-| `GET /api/runs/{id}/provenance` | Data and kernel checksums, and the ephemeris used |
-| `GET /api/terrain/tiles/{level}/{row}/{column}` | LOLA heights of one tile (65×65 nodes plus a one-node border, little-endian float32, north to south) on the same south-polar tile grid as NASA Moon Trek imagery. Levels 0–13 reach 4 m spacing. Saved under `cache/terrain_tiles`. |
-| `GET /api/sky?start_utc&end_utc&integration_minutes&index` | Sun and Earth positions (Moon-fixed metres) for the batch of 32 samples holding that sample, the same batches simulation runs use. |
-| `POST /api/terrain/context?grid_spacing_m=` | NASA's long-term maps over a site on the simulation's grid, with area-weighted means: average sunlight and Earth visibility (18.6 years), permanent-shadow share and open sky. Read from `raw/context` (60 m inside 85°S, 240 m to 65°S). |
-| `POST /api/terrain/ice` | Diviner's modelled temperatures and ice-stability depth for the cells inside a site (about 500 m cells, 80°S to the pole): annual mean and maximum temperature, share of the site with stable ice, share stable at the surface, shallowest and mean buried depth. `summary` is null outside the table. Read from `raw/context/diviner_prp_south.npz`. |
-| `GET /api/runs/{id}/site-map` | For a finished run: every point's longest day and darkness, share of the period lit and with Earth in view, the good-spot standards, and whole-site summaries (typical, best and worst longest day and darkness; area good for Sun, Earth contact and both). Built from the saved snapshots (each taken to hold for its whole interval) and cached as `site_map.npz` in the run's folder. |
-| `GET /api/runs/{id}/rays/{index}` | The 3D view's rays for one published snapshot: Sun-disk rays from about 40 evenly spaced grid points (the simulation's own rays) and Earth-disk rays from the same points at mast height (an illustration; the simulation reports Earth only at the centre mast). The worker saves origins, clear/blocked/unresolved and blocking distances with each frame, so this needs no terrain and is fast. Frames saved before this existed return 404. |
-| `POST /api/terrain/rays` | The same rays traced on demand for a time that has no saved frame, plus the centre-mast fans. Loads the site's terrain, so the first call takes seconds. |
-
-## Known limits
-
-- Terrain support covers 60°S–90°S, and 5 m detail exists only around the 10 sites listed above.
-- About 90% of the 5 m cells are interpolated between LOLA tracks (Barker et al. 2021). Grid spacing is not the same as measured detail.
-- Events shorter than one minute can be missed. Reflected light and Earthshine are not modelled.
-
-`raw/context` holds NASA Goddard's illumination products (`AVGVISIB_*`, `LPSR_*`, `SKYV_*`), about 150 MB, downloaded by `fetch-data` from `pgda.gsfc.nasa.gov`. It also holds `diviner_prp_south.npz` (58 MB): triangle centres with Diviner's annual mean temperature (2 cm depth), annual maximum surface temperature and ice depth. `fetch-data` downloads NASA's 605 MB `dlre_prp_south.tab` from the PDS Geosciences Node, cuts it down and deletes it. In the table `-999` means no ice is stable within 2.87 m; it also holds an undocumented `-1` in the coldest triangles, which LunaScout reads as ice stable at the surface.
+- How the numbers are produced: [docs/physics.md](../docs/physics.md)
+- How runs, sharing and timing work: [docs/runs.md](../docs/runs.md)
+- The endpoints: [docs/api.md](../docs/api.md)

@@ -139,61 +139,46 @@ To run LunaScout on a server of your own, with HTTPS and protections for public 
 
 ## Good to know
 
-The [video tutorial](#video-tutorial) shows the usual steps. A few details it does not:
+- **Dates are UTC.** After **Run simulation**, the hour at the playhead is computed first, so there is something to look at at once.
+- **Nothing is computed unasked.** Changing the dates asks the server what each site already has. If days are missing, a window lists them with the time they should take, and you choose **Compute missing dates** or **Keep previous dates**.
+- **Nothing is computed twice.** Results are shared between date ranges, sites of the same settings, browsers and visitors. Narrowing the range deletes nothing.
+- **Progress you can watch.** The progress window shows the run's stages as one bar, with a time left learned from this server's own timings. **Hide** shrinks it to a line above the timeline.
+- **Pause, resume and cancel** act only on your own request. A simulation another visitor also wants keeps running for them, and a cancel deletes nothing.
+- **Reference sites are precomputed** with the default settings and a 500 m radius, from the start of the month to the end of the next. A label such as "Ready to 31 Dec" shows which are done.
+- **Site size.** New sites start with a 50 m radius; the largest is 500 m. The first run at a new site builds a terrain horizon map (about a minute at 500 m), which later runs at that centre reuse.
+- **Activity menu** shows what the worker is doing and every recent simulation.
 
-**Dates are UTC.** The playhead's time is computed first after **Run simulation**, so there is something to look at immediately.
-
-**One timeline for every site.** Changing the dates asks the server what each saved site already has. If everything is there, the new dates show at once. If some days are missing, a window lists them with the time they should take, and you choose **Compute missing dates** or **Keep previous dates**; nothing is computed until you agree. Only the missing times are computed, because results stored for the same site and settings are reused, and narrowing the range deletes nothing. Long ranges are limited by computing time on the server: choose a coarser **Sample every** in Settings for ranges longer than a few months.
-
-**Progress you can watch.** Pressing **Run simulation** opens a progress window with one bar made of the run's stages: loading the terrain, building terrain horizons, tracing sunlight and Earth visibility, and finding sunrise and sunset times. Each finished stage turns green, and the time left comes from how long the same work took on this server, so it improves as the server runs more. **Hide** shrinks it to a line above the timeline, and the run keeps going.
-
-**Pause, resume and cancel.** A running simulation can be paused and resumed later from where it stopped, for a single site and for each of the two sites in Compare. Cancel stops showing it. Both act only on your own browser's request: a simulation another visitor also asked for keeps running for them. Nothing computed is ever deleted by a cancel; it is reused whenever anyone asks for those dates again, and only results nobody has asked for in 14 days are cleaned up.
-
-**Every time is computed once.** Simulations of the same site and settings share their samples, including while they run. When two date ranges overlap, the overlap is computed once and both use it; each computes only its own difference.
-
-**Results follow the request, not the browser.** When you open a site with the same dates and settings as an earlier simulation, from any browser, its results appear without pressing Run. When earlier simulations cover part of your dates, only the rest is computed, and that starts on its own.
-
-**Reference sites are precomputed.** NASA's reference sites are computed ahead of time with the default settings and a 500 m radius, from the start of the month to the end of the next one. A label such as "Ready to 31 Dec" shows which ones are done, and adding one shows its results at once. A smaller radius at the same centre reuses the terrain horizons, so it is quick too.
-
-**Site size.** New sites start with a 50 m radius. The largest allowed is 500 m.
-
-**Activity menu.** It shows whether the worker and API are running, what the worker is doing, and every recent simulation with its progress.
-
-**Deleting a site.** A site you created has its stored results removed to save space. A reference site keeps its results, hidden, for 14 days, and restores only the part inside the current timeline if you add it back.
-
-The first run at a new site builds a terrain horizon map, which takes about a minute for a 500 m site. Later runs, date changes and smaller radii at that centre reuse it.
+The reasons behind these behaviours are in [How the website behaves](docs/app-flows.md) and [Runs, reuse and the queue](docs/runs.md).
 
 ## How it works
 
+```mermaid
+flowchart LR
+    SPICE["NASA SPICE + JPL DE440<br/>Sun and Earth positions"] --> TRACE
+    DEM["NASA LOLA elevation maps<br/>curved terrain + skyline per point"] --> TRACE
+    TRACE["Rays from every grid point<br/>to the Sun and Earth disks"] --> SNAP["Snapshots<br/>sunlight · power · Earth view"]
+    SNAP --> STATS["Sunrise, sunset, longest darkness,<br/>site statistics"]
+    SNAP --> API["API"]
+    STATS --> API
+    API --> WEB["Website: 3D · 2D · compare"]
 ```
-JPL DE440 ──► SPICE (UTC→TDB, ICRF→lunar frame) ─────┐
-                                                     ├──► ray tracing per grid point ──► snapshots ──► API ──► website
-NASA LOLA DEMs ──► curved triangulated terrain ──────┘      (finite Sun disk,          (SQLite +       (REST + SSE)
-                   └──► horizon map per point (cached)       Earth eclipse)             NumPy files)
-```
 
-- **Terrain** from several LOLA resolutions is combined into one curved, triangulated surface, with the grids stitched so no false cliff appears where they meet.
-- **Horizon maps.** For every point of a site the exact terrain horizon is computed once and cached. Rays far from the skyline are classified by lookup, and rays near it are traced exactly, so results equal tracing every ray but run much faster.
-- **Sun and Earth** are sampled as disks with equal-solid-angle rays (37 for the Sun), so partial shadow and partial Earth views are resolved. Earth can eclipse the Sun.
-- **Time.** SPICE computes the Sun and Earth from JPL's DE440 ephemeris, with light time and aberration, and rotates them into the Moon's own frame, which accounts for the Moon's orbit and libration. The Moon has no atmosphere, so the horizon is the terrain.
-- **Events.** Sunrise, sunset, Earthrise and Earthset at the site centre are refined by bisection to about one second.
-- **Per-point statistics.** Each saved snapshot is combined into every point's longest day, longest darkness and share of time lit and with Earth in view. These drive the best-spot layers and the whole-site comparison.
-- **Runs** are content-addressed and shared between date ranges, so a run is never computed twice.
+In one paragraph: SPICE places the Sun and Earth in the Moon's own frame. The terrain is one curved surface built from NASA elevation maps, and each point's skyline is computed once. From every point of a site, 37 rays cross the Sun's disk and more cross Earth's; the skyline tells which are blocked. That gives sunlight, power and Earth visibility per point and per time, and scanning the site centre finds sunrise and sunset to a second. A worker does this in the background, saves the results, and the website only draws them.
 
-The 3D view streams LOLA elevation as tiles on the same grid as the NASA photos, and each tile refines as the camera approaches. Its rays come from the same calculation as the results panel and are saved with each snapshot, so the picture can never disagree with the numbers.
+**[The full explanation, with diagrams, is in docs/physics.md.](docs/physics.md)**
 
-## Project structure
+## Documentation
 
-| Folder | Responsibility |
+| Read | To learn |
 |---|---|
-| `backend/lunascout/ephemeris` | Sun and Earth positions with SPICE, and the monthly check against JPL Horizons |
-| `backend/lunascout/terrain` | DEM loading, ray tracer, horizon maps, elevation tiles, NASA long-term maps |
-| `backend/lunascout/simulation` | Site grid, irradiance, Earth visibility, event windows, per-point statistics |
-| `backend/lunascout/jobs` | Run queue, worker, time integration |
-| `backend/lunascout/api` | FastAPI routes and the site catalogue |
-| `frontend/src/features` | 3D view, map, comparison, timeline, results, settings |
-| `frontend/src/styles` | Shared styles; each feature keeps its own stylesheet beside its components |
-| `DATA/` | NASA inputs, caches and run outputs. See [DATA/README.md](DATA/README.md) for the API and data layout |
+| [Architecture](docs/architecture.md) | How the website, API, worker and queue fit together, and what is stored where |
+| [How the physics works](docs/physics.md) | SPICE, terrain, the Sun disk, horizon maps, power, Earth visibility, events |
+| [Runs, reuse and the queue](docs/runs.md) | How work is shared, who can stop it, precomputing and time estimates |
+| [How the website behaves](docs/app-flows.md) | Date changes, adding sites, the progress window, the 3D view |
+| [Decisions and why](docs/decisions.md) | The choices behind it and what each one costs |
+| [API reference](docs/api.md) | The endpoints, grouped by purpose |
+| [Data layout](DATA/README.md) | NASA inputs, caches, sizes |
+| [Hosting guide](deploy/README.md) | Putting LunaScout on your own server |
 
 ## Command line
 
@@ -229,6 +214,8 @@ uv run --locked --with pytest python -m pytest tests
 The suite covers the ray tracer, the horizon method against direct tracing, event timing, run queueing and reuse, elevation tiles, the rays and the per-point statistics. Tests that need the NASA data are skipped when it has not been downloaded. The frontend is checked with `npm run check` (TypeScript) and `npm run build`.
 
 ## Accuracy and limitations
+
+The reasoning behind each is in [docs/physics.md](docs/physics.md#limits).
 
 - **Earth coverage is geometric.** It says whether terrain blocks the line to Earth, not whether a link would close. Antenna patterns, link budgets and Earth's atmosphere are not modelled.
 - **Terrain detail.** About 90% of the 5 m cells are interpolated between LOLA laser tracks (Barker et al. 2021), so grid spacing is not the same as measured detail. Each site reports which resolution it was computed from.

@@ -4,6 +4,18 @@ This puts LunaScout on a small Google Cloud server at your own domain, using the
 
 **What ends up running:** a web server (Caddy) that serves the website over HTTPS and passes `/api` to the API, the API itself, and the simulation worker. The API and worker restart on their own after a reboot.
 
+```mermaid
+flowchart LR
+    V(["Visitor"]) -- "HTTPS" --> C["Caddy<br/>certificate, static website"]
+    C -- "/api" --> A["API<br/>127.0.0.1:8000"]
+    A <--> Q[("queue + DATA")]
+    W["Worker<br/>lower CPU priority"] <--> Q
+    T1(["weekly timer"]) -. "queues reference sites" .-> Q
+    T2(["monthly timer"]) -. "SPICE vs Horizons check" .-> L["ephemeris-check.log"]
+```
+
+For how these parts work together, see [docs/architecture.md](../docs/architecture.md).
+
 ## Before you start
 
 - Push the repository to GitHub and make it public. The server downloads the code from there.
@@ -26,7 +38,7 @@ Compute Engine, VM instances, **Create instance**:
 | Boot disk | Ubuntu 24.04 LTS, 50 GB, balanced persistent disk |
 | Firewall | Tick **Allow HTTP traffic** and **Allow HTTPS traffic** |
 
-If simulations are too slow later, choose `e2-standard-4` (about twice the cost and speed).
+If simulations are too slow later, choose `e2-standard-4` (about twice the cost and speed). To precompute the reference sites faster, resize to a larger E2 type for a few hours (stop the VM, change the machine type, start it), then resize back. Time estimates are learned per CPU count, so they stay honest after a resize. A new Google Cloud account may have no quota for the compute-optimised C2 types; E2 types work.
 
 ## 3. Give it a fixed address
 
@@ -116,4 +128,4 @@ To run privately, remove the `LUNASCOUT_PUBLIC_MODE` line from `/etc/lunascout.e
 - **Memory.** Each site's terrain takes a few hundred megabytes, and the API and worker each load some. If the server runs out of memory, services restart by themselves; check `free -h` and consider the larger machine.
 - **After the trial.** The free credit lasts 90 days. When it ends the server stops; nothing is charged unless you upgrade. Download anything you want to keep, or move to a cheap provider and run the same script.
 - **Security.** This setup has no sign-in. It limits what a visitor can do, but it is a demo server, not one to put private data on.
-- **Not tested on a real server.** These files were written and checked for syntax, but not run on a live Google Cloud machine. If a step fails, send me the error and I will fix it.
+- **If a step fails,** read the error and the service logs above first. Setup is safe to run again: it only changes what is missing.
