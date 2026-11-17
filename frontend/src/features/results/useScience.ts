@@ -139,9 +139,8 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
 
   /**
    * For saved sites this browser has no run for, ask the server what it already has. An existing
-   * run is shown straight away. When earlier runs of the same site and settings cover part of the
-   * dates, the rest is started, so only the missing days are computed. Nothing starts for a site
-   * the server knows nothing about.
+   * run is shown straight away. When earlier runs of the same site and settings already hold every
+   * sample of the dates, a run is made from them at once. Nothing is computed unasked.
    */
   useEffect(() => {
     for (const site of sites) {
@@ -159,7 +158,9 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
           // Joining an unfinished run records this browser as wanting it, so another browser
           // pausing or cancelling it cannot stop it for this one.
           if (existing.stage !== "complete") void run(site, range, atUtc).catch(() => undefined);
-        } else if (found.reusable_samples > 0) {
+        } else if (found.reusable_samples >= found.total_samples) {
+          // Everything is already computed, so showing it costs nothing. Anything missing is
+          // computed only when the user asks (Run) or agrees (new dates).
           void run(site, range, atUtc).catch(() => undefined);
         }
       }).catch(() => lookedUp.current.delete(key));
