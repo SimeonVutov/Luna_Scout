@@ -78,7 +78,7 @@ Turn on **Sun rays** to draw the rays the simulation traces from many points acr
 
 The **Whole period** view turns the comparison into a scorecard, with a marker on the better site for every row. It is grouped into power, communication, whole-site statistics and long-term context:
 
-![Scorecard comparing two sites across power, communication, whole-site and long-term metrics](docs/images/compare-scorecard.png)
+![Scorecard comparing two sites across power, communication, whole-site, ice and long-term metrics](docs/images/compare-scorecard.png)
 
 - **Power and communication** for the selected dates: solar energy on the receiver, sunlit time, longest day, longest darkness, Earth visibility, longest Earth contact and longest blackout, with sunrise, sunset, Earthrise and Earthset timed to about one second at the site centre.
 - **Across the whole site**: the longest day and longest darkness of the typical point and of the best spot, and the share of the site's area that is good for Sun, good for Earth contact and good for both.
