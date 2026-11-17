@@ -119,6 +119,9 @@ export function useSiteRays(
     const worker = async () => {
       for (let index = queue.shift(); index !== undefined; index = queue.shift()) {
         if (controller.signal.aborted) return;
+        // Only snapshots the simulation has already saved are read ahead. Tracing the rest on demand
+        // is slow, and the run saves them soon anyway.
+        if (!sourceOf(index).saved) continue;
         try {
           await fetchStep(index, controller.signal);
         } catch {
@@ -126,7 +129,6 @@ export function useSiteRays(
         }
       }
     };
-    // Saved frames are cheap to read and go in parallel; traced ones share the API's terrain.
     void Promise.all(Array.from({ length: PARALLEL }, worker));
     return () => controller.abort();
   // Steps ahead depend on the run's ready frames and the playhead only.
