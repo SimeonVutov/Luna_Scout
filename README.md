@@ -143,7 +143,7 @@ The [video tutorial](#video-tutorial) shows the usual steps. A few details it do
 
 **Dates are UTC.** The playhead's time is computed first after **Run simulation**, so there is something to look at immediately.
 
-**One timeline for every site.** Changing the date range starts a simulation for all saved sites. Only the missing times are computed, because results stored for the same site and settings are reused, and narrowing the range deletes nothing. Long ranges are limited by computing time on the server: choose a coarser **Sample every** in Settings for ranges longer than a few months.
+**One timeline for every site.** Changing the dates asks the server what each saved site already has. If everything is there, the new dates show at once. If some days are missing, a window lists them with the time they should take, and you choose **Compute missing dates** or **Keep previous dates**; nothing is computed until you agree. Only the missing times are computed, because results stored for the same site and settings are reused, and narrowing the range deletes nothing. Long ranges are limited by computing time on the server: choose a coarser **Sample every** in Settings for ranges longer than a few months.
 
 **Progress you can watch.** Pressing **Run simulation** opens a progress window with one bar made of the run's stages: loading the terrain, building terrain horizons, tracing sunlight and Earth visibility, and finding sunrise and sunset times. Each finished stage turns green, and the time left comes from how long the same work took on this server, so it improves as the server runs more. **Hide** shrinks it to a line above the timeline, and the run keeps going.
 

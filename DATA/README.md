@@ -82,7 +82,7 @@ Maps are cached in `cache/horizons/`. The cache key covers the terrain checksums
 | Endpoint | Returns |
 |---|---|
 | `POST /api/runs` | Queues or reuses a run. Identical inputs, including data checksums, share one result. An optional `session` (the browser's random ID) records that browser as wanting the run. Before each batch, a run copies any samples other runs of the same site and settings computed at its times, so overlapping ranges compute each time once. |
-| `POST /api/runs/lookup` | The run for a request if it exists, and how many of its samples earlier runs of the same site and settings already computed. Starts nothing. |
+| `POST /api/runs/lookup` | The run for a request if it exists, how many of its samples earlier runs of the same site and settings already computed, and how long the rest should take (`estimated_seconds`, from the timings this server has learned). Starts nothing. |
 | `POST /api/runs/{id}/pause?session=` | Pauses this session's request. The run stops only when no session wants it computed; everything computed is kept. |
 | `POST /api/runs/{id}/resume?session=` | Wants the run again and continues it from where it stopped. |
 | `DELETE /api/runs/{id}?session=` | Withdraws this session's request. Deletes nothing: when no session is left the run stops and is hidden, its samples stay for reuse, and it is removed after 14 days if nobody asks for it. |
