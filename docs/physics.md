@@ -30,6 +30,12 @@ We use NASA's **NAIF SPICE** toolkit with the **JPL DE440** planetary ephemeris,
 - **Libration** comes from NASA's time-varying orientation kernel. We do not model it ourselves.
 - **Surface parallax** is handled per ray: each ray starts at its own point on the surface, and the Sun's direction is computed from that point, not from the Moon's centre.
 
+In symbols, SPICE gives the Moon-centred positions in the inertial J2000 frame (kilometres), which are rotated into the Moon-fixed frame and converted to metres, and then each ray's direction is measured from its own origin:
+
+$$\mathbf{r}_{\mathrm{MF}} = 1000\;\mathbf{Q}(t)\,\mathbf{r}_{\mathrm{J2000}}, \qquad \mathbf{v}_{\odot} = \mathbf{r}_{\odot} - \mathbf{x}, \qquad \mathbf{v}_{\oplus} = \mathbf{r}_{\oplus} - \mathbf{x}$$
+
+where $\mathbf{Q}(t)$ is the J2000-to-lunar rotation matrix at time $t$ (it contains libration), $\mathbf{r}_{\odot}$ and $\mathbf{r}_{\oplus}$ are the Sun's and Earth's Moon-centred positions, $\mathbf{x}$ is the ray's origin on the surface, and $\mathbf{v}_{\odot}$, $\mathbf{v}_{\oplus}$ point from that origin to the Sun and Earth.
+
 ### Why SPICE, and not JPL Horizons
 
 The first version asked JPL's Horizons web service for positions. That worked but needed the internet, was rate limited, and every request took time. Both serve the same ephemeris family, so we compared them:
@@ -66,10 +72,17 @@ At the south pole the Sun skims the horizon, so a ridge usually hides only *part
 
 Each point casts **37 rays**, spread so each one stands for an equal area of the Sun's disk. The share that reaches the Sun is the lit fraction. In our test a single centre ray reported Shackleton as 86% lit where the full disk gives 96%.
 
-How the rays are placed on the disk (ray *i* of *N*):
+How the rays are placed on the disk, for ray $i = 0, 1, \dots, N-1$ of $N = 37$:
 
-- distance from the disk centre: `r = R · √((i + ½) / N)`, which gives every ray the same area;
-- angle around it: `ψ = i · π · (3 − √5)`, the golden angle, so rays never line up in rows.
+$$r_i = R\,\sqrt{\frac{i + \tfrac{1}{2}}{N}}, \qquad \psi_i = i\,\pi\,(3 - \sqrt{5})$$
+
+Here $R$ is the disk's angular radius, $r_i$ is the ray's distance from the disk centre, and $\psi_i$ is its angle around the centre. The square root gives every ray an equal share of the disk's area. The angle step $\pi(3-\sqrt{5}) \approx 137.5^\circ$ is the golden angle, so rays never line up in rows.
+
+With $V_j = 1$ if ray $j$ is clear and $0$ if it is blocked, the lit fraction of the Sun is
+
+$$f = \frac{1}{N}\sum_{j=1}^{N} V_j$$
+
+Rays that cross terrain we have no data for are *unresolved*. They give two bounds instead of one number: $f_{-}$ counts only rays known to be clear, and $f_{+}$ counts every ray not known to be blocked, so $f_{-} \le f \le f_{+}$.
 
 Earth is treated the same way, with its own disk of rays. Earth can also pass in front of the Sun (an eclipse), and that is masked per ray.
 
@@ -79,8 +92,12 @@ Terrain does not move. Only the Sun and Earth do. So for every grid point, once,
 
 ![Rays above the skyline are clear, rays below are blocked, and only rays within 0.05° of it are traced exactly](images/fig-horizon-method.svg)
 
+For a point, the skyline $h(\alpha)$ is the largest elevation angle $\varepsilon$ of any terrain seen in direction $\alpha$ (azimuth). A ray towards elevation $\varepsilon$ and azimuth $\alpha$ is then classified by comparing the two:
+
+$$\text{ray} = \begin{cases} \text{clear} & \varepsilon > h(\alpha) + \delta \\ \text{blocked} & \varepsilon < h(\alpha) - \delta \\ \text{traced exactly} & \text{otherwise} \end{cases} \qquad \delta = 0.05^\circ$$
+
 - A ray **above** the skyline is clear. A ray **below** is blocked.
-- A ray within **0.05°** of the skyline is too close to call from a table, so it is traced exactly with the full ray tracer.
+- A ray within $\delta = 0.05^\circ$ of the skyline is too close to call from a table, so it is traced exactly with the full ray tracer.
 - The answers are identical to tracing every ray. We checked: 0 differences in 378,473 point-and-time combinations at each of two sites.
 
 This is the method behind NASA's own LOLA illumination maps (Mazarico et al. 2011).
@@ -92,20 +109,33 @@ This is the method behind NASA's own LOLA illumination maps (Mazarico et al. 201
 | Shackleton Rim | 44 s | 21 ms | 15.6× |
 | Connecting Ridge | 66 s | 12 ms | 34.5× |
 
-A two-month run has about 5,800 timestamps, so the build is a small cost. The dashed lines in the chart are derived from the speed-up factors above.
+With a build time $B$, a time $p$ per timestamp with horizon maps and $p_d$ without them, the time for $n$ timestamps is $B + p\,n$ against $p_d\,n$, so the build pays for itself once
+
+$$n > \frac{B}{p_d - p} \qquad\Longrightarrow\qquad n^{*}_{\text{Shackleton}} \approx \frac{44}{0.328 - 0.021} \approx 143, \quad n^{*}_{\text{Connecting}} \approx \frac{66}{0.414 - 0.012} \approx 164$$
+
+where $p_d$ is the measured $p$ times the speed-up factor in the table. A two-month run has about 5,800 timestamps, so the build is a small cost. The dashed lines in the chart are drawn from the same numbers.
 
 **Skylines are shared.** One file is kept per site *centre*, not per run. A smaller radius at the same centre, a different date range, or a different visitor all reuse it. The file is keyed by the terrain data and the receiver heights, so a change to either rebuilds it automatically. Pure ray tracing is still available as `ray_method: "direct"`, mainly for testing.
 
 ## 5 · How much power?
 
-For each ray *j* that reaches the Sun, a panel collects sunlight in proportion to the angle between the ray and the panel's normal (the cosine of the angle, Lambert's law). Summed over the disk:
+A panel collects sunlight from each clear ray in proportion to the cosine of the angle between the ray and the panel's normal (Lambert's cosine law):
 
-```
-irradiance G = F · Σ( cosθⱼ · clearⱼ ) / N
-F = 1361 W/m² × (1 AU / distance to Sun)²
-```
+$$c_j = \max\!\left(0,\; \hat{\mathbf{n}} \cdot \hat{\boldsymbol{\omega}}_j\right)$$
 
-- 1361 W/m² is the Sun's output at Earth's distance (the IAU nominal value). It is scaled by the actual distance, which changes through the year.
+where $\hat{\mathbf{n}}$ is the panel's unit normal and $\hat{\boldsymbol{\omega}}_j$ is the unit direction of ray $j$. The flux facing the Sun falls with the square of the distance, and the rays are averaged over the disk:
+
+$$S = S_1\left(\frac{\mathrm{AU}}{d}\right)^{2}, \qquad F = \frac{S}{\langle\cos\theta\rangle}, \qquad G = F\,\frac{1}{N}\sum_{j=1}^{N} c_j\,V_j$$
+
+| Symbol | Meaning |
+|---|---|
+| $S_1 = 1361\ \mathrm{W/m^2}$ | The Sun's output at Earth's average distance (the IAU nominal value) |
+| $d$ | Distance from the receiver to the Sun's centre, which changes through the year |
+| $\mathrm{AU}$ | The astronomical unit, 149,597,870,700 m |
+| $\theta$ | Angle between a ray and the disk centre. Dividing by $\langle\cos\theta\rangle$ (the mean over the rays) makes a fully lit panel facing the Sun collect exactly $S$ |
+| $V_j$ | 1 if ray $j$ is clear, 0 if blocked |
+| $G$ | Direct irradiance on the panel, in W/m² |
+
 - The panel is a **vertical panel that turns toward the Sun, 2 m above the ground**, as on real polar landers. Other receivers (ground, horizontal) can be chosen in Settings.
 
 ![Energy at Shackleton by receiver: 24 kWh/m² per day for a vertical panel, 13 on the ground, 0.7 for a horizontal plate](images/fig-receivers.svg)
@@ -129,14 +159,26 @@ flowchart LR
     C --> D["Bisect that minute<br/>down to about 1 second"]
 ```
 
-Interpolating positions over 15 minutes costs less than 0.0001° of error. An event shorter than one minute can still be missed between two scans.
+Each bisection halves the interval that contains the event, so after $k$ steps it is known to within
+
+$$\Delta t_k = \frac{60\ \mathrm{s}}{2^{k}}, \qquad \Delta t_6 = \frac{60}{64}\ \mathrm{s} < 1\ \mathrm{s}$$
+
+Interpolating positions over 15 minutes costs less than $0.0001^\circ$ of error. An event shorter than one minute can still be missed between two scans.
 
 ## 8 · From samples to site statistics
 
-- **Over time.** Area metrics are integrated with the trapezoid rule, split at UTC midnights so each day gets its own total.
+- **Over time.** Area metrics are integrated with the trapezoid rule, split at UTC midnights so each day gets its own total. For a quantity $q$ sampled at times $t_k$, such as irradiance:
+
+  $$\int q\,dt \;\approx\; \sum_{k} \frac{q(t_k) + q(t_{k+1})}{2}\,\bigl(t_{k+1} - t_k\bigr)$$
+
+  Integrating irradiance $G$ gives energy per square metre, which the page shows in kWh/m².
 - **Across the site.** Each saved snapshot is combined into every point's longest day, longest darkness, share of time lit and share of time with Earth in view. These feed the *best spots* layers and the whole-site rows in the comparison. Each hourly snapshot is taken to hold for its whole hour.
-- **Slope** is the height difference between neighbouring grid points over twice the grid spacing (40 m at the default 20 m grid). It is smoother than the 5 m data itself.
-- **Lit and gentle** counts a point when at least half the Sun is visible *and* the slope is at most 10°, the limit used in NASA-supported landing-site studies.
+- **Slope** is a central difference of terrain height $h$ between neighbouring grid points a distance $s$ apart, so the baseline is $2s$ (40 m at the default 20 m grid):
+
+  $$\beta = \arctan\sqrt{\left(\frac{\partial h}{\partial E}\right)^{2} + \left(\frac{\partial h}{\partial N}\right)^{2}}, \qquad \frac{\partial h}{\partial E} \approx \frac{h(E+s) - h(E-s)}{2s}$$
+
+  and the same for north. It is smoother than the 5 m data itself, and over tens of metres the Moon's curvature is ignored.
+- **Lit and gentle** counts a point when at least half the Sun is visible *and* the slope is at most 10°, the limit used in NASA-supported landing-site studies: $f \ge 0.5$ and $\beta \le 10^\circ$.
 - **Good spot** thresholds (lit at least 70% of the time, Earth in view at least 30%) are our judgement, shown in the interface, not NASA requirements.
 
 ## 9 · Long-term context from NASA
