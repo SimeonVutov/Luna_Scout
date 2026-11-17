@@ -13,7 +13,11 @@ export type MissingResults = {
   seconds: number;
 };
 
-export type PendingRange = { range: TimeRange; missing: MissingResults[] };
+/**
+ * What the user is being asked. `changesDates` is true when the question comes with new dates for
+ * the timeline, which can be kept as they were; false when it is about the dates already shown.
+ */
+export type PendingRange = { range: TimeRange; missing: MissingResults[]; changesDates: boolean };
 
 type Inputs = {
   sites: Site[];
@@ -34,46 +38,65 @@ function missingSamples(found: RunLookup) {
   return Math.max(0, found.total_samples - found.reusable_samples);
 }
 
+/** Samples of a partly computed run: some are known, and some are not. */
+function partlyComputed(found: RunLookup) {
+  return missingSamples(found) > 0 && found.reusable_samples > 0;
+}
+
 /**
- * Changing the timeline's dates never starts work by itself. The server is asked what each saved
- * site already has for the new dates: when everything is there, the dates are shown at once; when
- * something is missing, the user is asked first and can keep the previous dates instead.
+ * Nothing is computed unasked. When the timeline's dates change, the server is asked what each
+ * saved site already has for the new dates: if everything is there they are shown at once, and if
+ * something is missing the user is asked first and can keep the previous dates. A newly added
+ * site that is only partly computed for the dates shown, such as a reference site the server has
+ * precomputed in part, gets the same question.
  */
 export function useRangeChange({ sites, options, apply, run, onStarted, onProblems }: Inputs) {
   const [pending, setPending] = useState<PendingRange | null>(null);
   // Only the latest request counts, so a slow answer cannot replace a newer choice.
   const latest = useRef(0);
 
-  async function request(next: TimeRange) {
-    const ticket = ++latest.current;
-    const first = snapshotAt(next, 0).toISOString();
-    const supported = sites.filter((site) => site.latitude_deg <= -60);
+  /** What each of `targets` lacks for `range`; `include` says which kinds of gap are worth asking about. */
+  async function lackOf(targets: Site[], range: TimeRange, include: (found: RunLookup) => boolean) {
+    const first = snapshotAt(range, 0).toISOString();
+    const supported = targets.filter((site) => site.latitude_deg <= -60);
     const samplesPerDay = 1440 / options.integration_minutes;
 
     const answers = await Promise.allSettled(supported.map((site) =>
-      lookupRun({ ...next, ...options, site, priority_utc: first }, new AbortController().signal)));
-    if (ticket !== latest.current) return;
+      lookupRun({ ...range, ...options, site, priority_utc: first }, new AbortController().signal)));
 
     // A site that could not be asked about is left out: it behaves as it always did.
-    const missing = answers.flatMap((answer, index): MissingResults[] => {
-      if (answer.status !== "fulfilled") return [];
+    return answers.flatMap((answer, index): MissingResults[] => {
+      if (answer.status !== "fulfilled" || !include(answer.value)) return [];
 
       const samples = missingSamples(answer.value);
-      if (!samples) return [];
       return [{ site: supported[index], days: Math.max(1, Math.ceil(samples / samplesPerDay)), seconds: answer.value.estimated_seconds }];
     });
+  }
 
-    if (missing.length) setPending({ range: next, missing });
+  /** The timeline's dates are changing to `next`. */
+  async function request(next: TimeRange) {
+    const ticket = ++latest.current;
+    const missing = await lackOf(sites, next, (found) => missingSamples(found) > 0);
+    if (ticket !== latest.current) return;
+
+    if (missing.length) setPending({ range: next, missing, changesDates: true });
     else apply(next);
+  }
+
+  /** Sites were just added: ask about those the server holds only part of, for the dates shown. */
+  async function offer(added: Site[], range: TimeRange) {
+    const ticket = ++latest.current;
+    const missing = await lackOf(added, range, partlyComputed);
+    if (ticket === latest.current && missing.length) setPending({ range, missing, changesDates: false });
   }
 
   /** Show the new dates and start computing what they lack. */
   async function confirm() {
     if (!pending) return;
 
-    const { range, missing } = pending;
+    const { range, missing, changesDates } = pending;
     setPending(null);
-    apply(range);
+    if (changesDates) apply(range);
 
     const first = snapshotAt(range, 0).toISOString();
     const results = await Promise.allSettled(missing.map((item) => run(item.site, range, first)));
@@ -85,11 +108,11 @@ export function useRangeChange({ sites, options, apply, run, onStarted, onProble
     if (started.length) onStarted(started);
   }
 
-  /** Leave the timeline as it was. */
+  /** Leave things as they were: the previous dates stay, or the site simply waits for Run. */
   function keepPrevious() {
     latest.current++;
     setPending(null);
   }
 
-  return { pending, request, confirm, keepPrevious };
+  return { pending, request, offer, confirm, keepPrevious };
 }

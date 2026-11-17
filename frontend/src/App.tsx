@@ -17,6 +17,7 @@ import { useSiteData } from "./features/results/useSiteData";
 import { SettingsDrawer } from "./features/settings/SettingsDrawer";
 import { maximumSiteRadius, referenceSites } from "./features/sites/referenceSites";
 import { SitePanel } from "./features/sites/SitePanel";
+import { useAddedSites } from "./features/sites/useAddedSites";
 import { useSiteCatalog } from "./features/sites/useSiteCatalog";
 import { readyLabel, usePrecomputed } from "./features/sites/usePrecomputed";
 import { RunDialog } from "./features/progress/RunDialog";
@@ -98,6 +99,8 @@ export function App() {
     onStarted: (started) => { progress.show(started); void activity.refresh(); },
     onProblems: setError,
   });
+
+  useAddedSites(sites, catalog.state === "ready", (added) => void rangeChange.offer(added, range));
 
   const selectedRun = science.status(selected);
   const compareRuns: Record<Slot, RunStatus | null> = { a: science.status(chosen.a), b: science.status(chosen.b) };
@@ -253,7 +256,7 @@ export function App() {
       <Timeline range={range} index={timeIndex} onIndex={setTimeIndex} onRange={(next) => void rangeChange.request(next)} tracks={tracks} />
 
       {rangeChange.pending && <ExtendDialog range={rangeChange.pending.range} missing={rangeChange.pending.missing}
-        onCompute={() => void rangeChange.confirm()} onKeepPrevious={rangeChange.keepPrevious} />}
+        changesDates={rangeChange.pending.changesDates} onCompute={() => void rangeChange.confirm()} onKeepPrevious={rangeChange.keepPrevious} />}
 
       {progress.open && <RunDialog entries={progress.entries} onHide={progress.hide}
         onPause={(site) => control(science.pause, site)} onResume={(site) => control(science.resume, site)}
