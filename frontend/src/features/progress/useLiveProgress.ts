@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { RunStatus, StageKey } from "../../api/types";
 import { isActive } from "../results/useScience";
-import { advance, overall, segments } from "./progressModel";
+import { advance, overall, overrunning, segments } from "./progressModel";
 import type { Segment } from "./progressModel";
 
 const TICK_MS = 250;
@@ -12,6 +12,8 @@ export type LiveProgress = {
   /** Share of the whole bar that is filled, between 0 and 1. */
   overall: number;
   remainingS: number;
+  /** A stage with no count of its own is taking longer than estimated, so no time is promised. */
+  overrun: boolean;
 };
 
 /**
@@ -54,11 +56,12 @@ export function useLiveProgress(run: RunStatus | null): LiveProgress | null {
     const finished = memory.last.length ? memory.last : [{ key: "snapshots" as const, state: "done" as const, width: 1, fill: 1 }];
     const parts = finished.map((part) => ({ ...part, state: "done" as const, fill: 1 }));
     const done = parts.map((part) => ({ key: part.key, state: "done" as const, seconds: 0, fraction: 1 }));
-    return { segments: parts, stages: done, overall: 1, remainingS: 0 };
+    return { segments: parts, stages: done, overall: 1, remainingS: 0, overrun: false };
   }
 
   const parts = segments(stages);
   memory.last = parts;
   const remainingS = progress ? Math.max(0, progress.remaining_s - (moving ? elapsedS : 0)) : 0;
-  return { segments: parts, stages, overall: overall(parts), remainingS };
+  const overrun = moving && progress !== null && progress !== undefined && overrunning(progress.stages, elapsedS);
+  return { segments: parts, stages, overall: overall(parts), remainingS, overrun };
 }

@@ -38,6 +38,15 @@ export function advance(progress: RunProgress, elapsedS: number, moving: boolean
   });
 }
 
+/**
+ * Whether a stage with no count of its own, such as loading terrain, has outlasted its estimate.
+ * Stages that count points or samples show real progress, so they are never "late".
+ */
+export function overrunning(stages: StageProgress[], elapsedS: number) {
+  return stages.some((stage) => stage.state === "active" && stage.total_units == null && stage.seconds > 0
+    && stage.fraction + elapsedS / stage.seconds >= 1);
+}
+
 /** The bar's segments. Stages with nothing to do are left out of the bar. */
 export function segments(stages: StageProgress[]): Segment[] {
   const shown = stages.filter((stage) => stage.state !== "skipped");

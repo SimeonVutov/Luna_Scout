@@ -27,7 +27,7 @@ export function RunCard({ site, slot, run, pausedForYou, onPause, onResume, onCa
   const paused = run?.stage === "paused";
   const complete = run?.stage === "complete";
   const active = live?.stages.find((stage) => stage.state === "active");
-  const status = statusLine(run, live?.remainingS ?? 0);
+  const status = statusLine(run, live?.remainingS ?? 0, live?.overrun ?? false);
 
   return <section className={complete ? "run-card complete" : "run-card"} aria-label={`Simulation of ${site.name}`}>
     <header>
@@ -53,11 +53,13 @@ export function RunCard({ site, slot, run, pausedForYou, onPause, onResume, onCa
 
 type Tone = "normal" | "waiting" | "done" | "stopped";
 
-function statusLine(run: RunStatus | null, remainingS: number): { text: string; tone: Tone } {
+function statusLine(run: RunStatus | null, remainingS: number, overrun: boolean): { text: string; tone: Tone } {
   if (!run) return { text: "Stopped", tone: "stopped" };
   if (run.stage === "complete") return { text: "Ready", tone: "done" };
   if (run.stage === "failed") return { text: "Stopped with an error", tone: "stopped" };
   if (run.stage === "paused") return { text: "Paused", tone: "waiting" };
+  // A stage that has outlasted its estimate promises nothing, rather than "a few seconds" for minutes.
+  if (overrun) return { text: "Taking longer than expected", tone: "waiting" };
   if (run.progress?.waiting) return { text: `Waiting for the server · ${timeLeft(remainingS)} left`, tone: "waiting" };
   return { text: `${capitalise(timeLeft(remainingS))} left`, tone: "normal" };
 }

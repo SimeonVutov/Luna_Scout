@@ -132,9 +132,14 @@
   animation: run-pop 420ms cubic-bezier(.2, 1.6, .4, 1);
 }
 
+/* Nothing to do for this stage: muted, so it never looks like progress made. */
 .stage-icon.skipped {
-  color: var(--done);
-  border: 1.5px solid #3d6352;
+  color: #7d8896;
+  border: 1.5px solid #3b444e;
+}
+
+.stage-row.skipped {
+  opacity: .6;
 }
 
 .stage-icon.active {
