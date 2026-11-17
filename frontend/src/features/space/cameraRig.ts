@@ -2,7 +2,7 @@ import { Quaternion, Vector3 } from "three";
 import type { PerspectiveCamera } from "three";
 import { attachCameraInput } from "./cameraInput";
 import { groundFrame, sampleFlight, startFlight } from "./cameraFlight";
-import { pickSphere } from "./cameraPick";
+import { pickGround } from "./cameraPick";
 import type { Flight, FlightPose } from "./cameraFlight";
 import { MOON_RADIUS_KM, unitToLatLon } from "./geodesy";
 
@@ -210,10 +210,9 @@ export class CameraRig {
     };
   }
 
-  /** The unit direction of the ground under a screen point, or null when it shows space. */
+  /** The unit direction of the drawn ground under a screen point, or null when it shows space. */
   pick(clientX: number, clientY: number) {
-    const radiusKm = MOON_RADIUS_KM + this.groundKm(this.up);
-    return pickSphere(this.camera, this.element.getBoundingClientRect(), clientX, clientY, radiusKm);
+    return pickGround(this.camera, this.element.getBoundingClientRect(), clientX, clientY, this.groundKm);
   }
 
   /** Move the view by a drag of `dx`, `dy` pixels: panning, turning and tilting, or looking around. */
