@@ -15,6 +15,10 @@ export type TimeRange = {
 export type Receiver = "vertical_tracking" | "terrain" | "horizontal";
 export type RayMethod = "horizon" | "direct";
 
+/** What the user chose in Settings. A null grid spacing means "automatic": chosen from the site's size. */
+export type ChosenOptions = Omit<SimulationOptions, "grid_spacing_m"> & { grid_spacing_m: number | null };
+
+/** The settings of one simulation request, with every value known. */
 export type SimulationOptions = {
   grid_spacing_m: number;
   solar_disk_samples: number;
