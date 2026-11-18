@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from "react";
-import type { Reading, RunStatus, SimulationOptions, Site, SiteContext, SiteInsight, SiteMap, SunlightGrid, TimeRange } from "../../api/types";
+import type { Reading, RunStatus, ChosenOptions, Site, SiteContext, SiteInsight, SiteMap, SunlightGrid, TimeRange } from "../../api/types";
 import { Icon } from "../../Icon";
 import { SouthPoleMap } from "../globe/SouthPoleMap";
 import type { MapLayer } from "../globe/SouthPoleMap";
@@ -31,7 +31,7 @@ type LiveProps = {
   view: "3d" | "2d";
   range: TimeRange;
   timeIndex: number;
-  options: SimulationOptions;
+  options: ChosenOptions;
   /** 3D layer settings shared by both panes. */
   spaceLayers: SpaceLayers;
   onSpaceLayers: (layers: SpaceLayers) => void;
@@ -59,7 +59,7 @@ function Pane({ slot, data, at, layer, onLayerChange, view, range, timeIndex, op
   view: "3d" | "2d";
   range: TimeRange;
   timeIndex: number;
-  options: SimulationOptions;
+  options: ChosenOptions;
   spaceLayers: SpaceLayers;
   onSpaceLayers: (layers: SpaceLayers) => void;
   body: Body;

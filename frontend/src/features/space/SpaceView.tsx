@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ControlsHint } from "./ControlsHint";
-import type { RayFan, RunStatus, SimulationOptions, Site, SiteContext, SiteMap, SunlightGrid, TimeRange } from "../../api/types";
+import type { RayFan, RunStatus, ChosenOptions, Site, SiteContext, SiteMap, SunlightGrid, TimeRange } from "../../api/types";
 import { bestSpotCanvas, contextCanvas, earthCanvas, sunlightCanvas } from "../globe/sunlightOverlay";
 import { hasEarthShare } from "../results/bestSpotColors";
 import { LayerLegend } from "../results/LayerLegend";
@@ -59,7 +59,7 @@ export function SpaceView({ active, sites, selected, focus, run, range, timeInde
   run: RunStatus | null;
   range: TimeRange;
   timeIndex: number;
-  options: SimulationOptions;
+  options: ChosenOptions;
   /** The simulation's sunlight grid of the selected site at the timeline's time. */
   sunlight: SunlightGrid | null;
   /** NASA's long-term maps over the selected site. */

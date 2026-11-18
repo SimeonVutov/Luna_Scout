@@ -1,4 +1,4 @@
-import type { Reading, RunStatus, SimulationOptions, Site, SiteInsight, TimeRange } from "../../api/types";
+import type { Reading, RunStatus, ChosenOptions, Site, SiteInsight, TimeRange } from "../../api/types";
 import { coordinatesLabel } from "../sites/referenceSites";
 import { clockLabel, dateLabel } from "../timeline/time";
 import { decimal } from "./format";
@@ -8,6 +8,7 @@ import { IceSection } from "./IceSection";
 import { TerrainSection } from "./TerrainSection";
 import { RunControls } from "./RunControls";
 import { PeriodMetricsList, SelectedTimeMetrics } from "./SiteMetrics";
+import { gridLabel } from "../settings/gridSpacing";
 import { isActive } from "./useScience";
 import type { IceState } from "./useSiteIce";
 import "./results.css";
@@ -24,7 +25,7 @@ type PanelProps = {
   submitting: boolean;
   reconnecting: boolean;
   priorityError: string | null;
-  options: SimulationOptions;
+  options: ChosenOptions;
   insight: SiteInsight | null;
   insightLoading: boolean;
   insightError: string | null;
@@ -63,7 +64,7 @@ export function ResultsPanel(props: PanelProps) {
       <RunControls run={run} pausedForYou={props.pausedForYou} showResume={false} onPause={props.onPause} onResume={props.onResume} onCancel={props.onCancel}
         onShowProgress={props.onShowProgress} />
       <button className="button quiet settings-link" type="button" onClick={props.onOpenSettings}>
-        {settingsSummary(props.options)} · Change
+        {settingsSummary(props.options, site)} · Change
       </button>
       {!supported && <p className="result-note" role="status">Sites can be saved anywhere on the Moon. Terrain previews and simulations currently support 90°S to 60°S.</p>}
       {active && run && <div className="run-progress">
@@ -130,7 +131,7 @@ function runTitle(state: TitleState) {
 
 const receiverShort = { vertical_tracking: "Vertical panel", terrain: "Ground", horizontal: "Flat plate" } as const;
 
-function settingsSummary(options: SimulationOptions) {
+function settingsSummary(options: ChosenOptions, site: { radius_m: number }) {
   const height = options.receiver === "terrain" ? "" : ` at ${options.collector_height_m} m`;
-  return `${receiverShort[options.receiver]}${height} · ${options.grid_spacing_m} m grid`;
+  return `${receiverShort[options.receiver]}${height} · ${gridLabel(options, site)}`;
 }

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cancelRun, lookupRun, pauseRun, prioritizeRuns, resumeRun, runEvents, runSeries, runSnapshot, runStatus, submitRun } from "../../api/client";
-import type { ChosenOptions, FramePayload, Reading, RunStatus, SimulationOptions, Site, TimeRange } from "../../api/types";
+import type { ChosenOptions, FramePayload, Reading, RunStatus, Site, TimeRange } from "../../api/types";
 import { resolveOptions } from "../settings/gridSpacing";
 
 const storageKey = "lunascout.runs.v1";
 
-export const defaultOptions: SimulationOptions = {
-  grid_spacing_m: 20,
+export const defaultOptions: ChosenOptions = {
+  // Automatic: chosen from each site's size. A 500 m site gets 20 m, as the precomputed runs use.
+  grid_spacing_m: null,
   solar_disk_samples: 37,
   integration_minutes: 15,
   mast_height_m: 2,

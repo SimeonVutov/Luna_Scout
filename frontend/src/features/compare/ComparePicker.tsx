@@ -1,9 +1,10 @@
-import type { RunStatus, SimulationOptions, Site } from "../../api/types";
+import type { RunStatus, ChosenOptions, Site } from "../../api/types";
 import { Icon } from "../../Icon";
 import { RunControls } from "../results/RunControls";
 import { runShare } from "../progress/progressModel";
 import { isActive } from "../results/useScience";
 import { coordinatesLabel } from "../sites/referenceSites";
+import { gridLabel } from "../settings/gridSpacing";
 import { slotColor, slotLabel, slots } from "./slots";
 import type { Slot } from "./slots";
 import "./comparePicker.css";
@@ -14,7 +15,7 @@ type PickerProps = {
   runs: Record<Slot, RunStatus | null>;
   /** Slots whose run this browser paused but that keeps running for another visitor. */
   pausedForYou: Record<Slot, boolean>;
-  options: SimulationOptions;
+  options: ChosenOptions;
   submitting: boolean;
   canStart: boolean;
   onAssign: (slot: Slot, id: string | null) => void;
@@ -80,7 +81,7 @@ export function ComparePicker(props: PickerProps) {
 
     <button className="button primary run-action" type="button" onClick={props.onRun} disabled={!props.canStart}>{title}</button>
     <button className="button quiet settings-link" type="button" onClick={props.onOpenSettings}>
-      {receiverShort[options.receiver]}{height} · {options.grid_spacing_m} m grid · Change
+      {receiverShort[options.receiver]}{height} · {gridLabel(options)} · Change
     </button>
 
     <div className="reference-sites">

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import type { RayMethod, Receiver, SimulationOptions } from "../../api/types";
+import type { RayMethod, Receiver, ChosenOptions } from "../../api/types";
 import { Icon } from "../../Icon";
 import "./settings.css";
 
@@ -32,8 +32,8 @@ function Choice<T extends string>({ name, value, options, onChange }: {
 }
 
 export function SettingsDrawer({ options, onApply, onClose }: {
-  options: SimulationOptions;
-  onApply: (options: SimulationOptions) => void;
+  options: ChosenOptions;
+  onApply: (options: ChosenOptions) => void;
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState(options);
@@ -48,7 +48,7 @@ export function SettingsDrawer({ options, onApply, onClose }: {
     return () => window.removeEventListener("keydown", close);
   }, [onClose]);
 
-  function number(field: keyof SimulationOptions, value: string) {
+  function number(field: Exclude<keyof ChosenOptions, "grid_spacing_m">, value: string) {
     setDraft((current) => ({ ...current, [field]: Number(value) }));
   }
 
@@ -83,7 +83,8 @@ export function SettingsDrawer({ options, onApply, onClose }: {
           <h3>Sampling</h3>
           <div className="field-grid">
             <label>Grid spacing (m)
-              <input type="number" min="0.1" step="any" required value={draft.grid_spacing_m} onChange={(event) => number("grid_spacing_m", event.target.value)} />
+              <input type="number" min="0.1" step="any" placeholder="Automatic" value={draft.grid_spacing_m ?? ""}
+                onChange={(event) => setDraft((current) => ({ ...current, grid_spacing_m: event.target.value === "" ? null : Number(event.target.value) }))} />
             </label>
             <label>Solar disk rays
               <input type="number" min="1" step="1" required value={draft.solar_disk_samples} onChange={(event) => number("solar_disk_samples", event.target.value)} />
@@ -94,6 +95,7 @@ export function SettingsDrawer({ options, onApply, onClose }: {
               </select>
             </label>
           </div>
+          <p className="field-note">Leave the grid spacing empty to choose it from each site's size: about 10 cells across the radius, between 5 and 20 m.</p>
         </section>
 
         <section>
