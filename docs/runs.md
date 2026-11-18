@@ -82,7 +82,7 @@ flowchart TD
 - A weekly timer queues each reference site from the start of the current month to the end of the next, with the website's default settings and a 500 m radius.
 - The worker process runs at a lower CPU priority than the API, so the website stays responsive even while precomputing.
 - A visitor's browser cannot pause or cancel a precompute run; they are owned by the server.
-- Because horizon maps are shared per site centre, a visitor adding the same site with a smaller radius reuses the 500 m skyline and is quick too.
+- Because horizon maps are shared per site centre, a visitor adding the same site with a smaller radius reuses the 500 m skyline for every grid point the two grids share. A small site's finer grid has points the 500 m grid did not, and those are built once and kept.
 
 ## Progress and "time left"
 
@@ -114,4 +114,4 @@ Two honesty rules for the window:
 
 ## Public servers
 
-The public server adds limits so strangers cannot exhaust it: ranges up to 35 days, grid spacing of at least 20 m, at most 20 visitor runs waiting, and per-visitor rate limits on heavy requests. Runs already covered by stored results do not count towards the 20. See [deploy/README.md](../deploy/README.md#what-the-public-setting-does).
+The public server adds limits so strangers cannot exhaust it: ranges up to 35 days, grid spacing of at least 5 m and at most 2,500 grid points per run, at most 20 visitor runs waiting, and per-visitor rate limits on heavy requests. Runs already covered by stored results do not count towards the 20. See [deploy/README.md](../deploy/README.md#what-the-public-setting-does).

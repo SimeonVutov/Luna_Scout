@@ -24,11 +24,12 @@ The choices that shape LunaScout, with the reason for each and what was given up
 | **A SQLite file as the queue** | Nothing extra to install, back up or lose. One server is enough for this load. | Would not scale to many servers. |
 | **Runs are named by a fingerprint of their inputs** | The same request always finds the same results, from any browser. Changed data or physics changes the name, so stale results are never reused. | Changing the physics means bumping the model revision, which recomputes. |
 | **Samples are shared between runs with the same "physics key"** | Overlapping date ranges, extended timelines and repeated requests compute each time once. | Slightly more complex submission: copy first, compute the gaps. |
-| **Horizon maps are kept per site centre, not per run** | A smaller radius, other dates or another visitor reuse the same skyline. | The maps are large. They are removed only when a custom site is deleted. |
+| **Horizon maps are kept per site centre, not per run** | A smaller radius with the same grid points, other dates or another visitor reuse the same skyline. | The maps are large. They are removed only when a custom site is deleted. |
 | **Pause and cancel act on a browser's own request** | A run is shared. One visitor must not stop it for another. It stops only when nobody wants it. | The server tracks who wants each run. |
 | **Cancel deletes nothing** | The work is reusable by anyone asking for the same dates. Unwanted runs expire after 14 days. | Disk use grows until cleanup. |
 | **Visitors come first; precompute yields** | The 15 reference sites are computed ahead so the first visitor sees results at once, but they must never slow a real visitor. | Precompute takes hours on a small server. |
-| **Reference sites precomputed at 500 m, defaults, to the end of next month** | Covers the common first look. A smaller radius at the same centre reuses the 500 m skyline. | Other settings or later dates still need computing. |
+| **Grid spacing follows the site's size** (about 10 cells across the radius, 5 to 20 m) | A fixed 20 m grid gave a 50 m site only about 5 cells across. A big site at 5 m would be 16 times the points, so the spacing grows with the radius and stops at 20 m. | Small sites cost more points, and a small site's grid is not the precomputed one. Outside the ten 5 m sites the terrain is 80 m, so a finer grid sharpens the picture, not the underlying detail. |
+| **Reference sites precomputed at 500 m, defaults, to the end of next month** | Covers the common first look. A smaller radius at the same centre reuses the 500 m skyline for the grid points they share. | Other settings or later dates still need computing. |
 
 ## The website
 

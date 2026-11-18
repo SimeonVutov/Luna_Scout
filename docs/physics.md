@@ -115,7 +115,7 @@ $$n \gt \frac{B}{p_{d} - p} \qquad\Longrightarrow\qquad n_{\text{Shackleton}}^{\
 
 where $p_{d}$ is the measured $p$ times the speed-up factor in the table. A two-month run has about 5,800 timestamps, so the build is a small cost. The dashed lines in the chart are drawn from the same numbers.
 
-**Skylines are shared.** One file is kept per site *centre*, not per run. A smaller radius at the same centre, a different date range, or a different visitor all reuse it. The file is keyed by the terrain data and the receiver heights, so a change to either rebuilds it automatically. Pure ray tracing is still available as `ray_method: "direct"`, mainly for testing.
+**Skylines are shared.** One file is kept per site *centre*, not per run. A smaller radius at the same centre (for the grid points the two sites share), a different date range, or a different visitor all reuse it. The file is keyed by the terrain data and the receiver heights, so a change to either rebuilds it automatically. Pure ray tracing is still available as `ray_method: "direct"`, mainly for testing.
 
 ## 5 · How much power?
 
@@ -173,7 +173,7 @@ Interpolating positions over 15 minutes costs less than $0.0001^\circ$ of error.
 
   Integrating irradiance $G$ gives energy per square metre, which the page shows in kWh/m².
 - **Across the site.** Each saved snapshot is combined into every point's longest day, longest darkness, share of time lit and share of time with Earth in view. These feed the *best spots* layers and the whole-site rows in the comparison. Each hourly snapshot is taken to hold for its whole hour.
-- **Slope** is a central difference of terrain height $h$ between neighbouring grid points a distance $s$ apart, so the baseline is $2s$ (40 m at the default 20 m grid):
+- **Slope** is a central difference of terrain height $h$ between neighbouring grid points a distance $s$ apart, so the baseline is $2s$ (40 m on the 20 m grid of a large site, 10 m on the 5 m grid of a small one):
 
   $$\beta = \arctan\sqrt{\left(\frac{\partial h}{\partial E}\right)^{2} + \left(\frac{\partial h}{\partial N}\right)^{2}}, \qquad \frac{\partial h}{\partial E} \approx \frac{h(E+s) - h(E-s)}{2s}$$
 

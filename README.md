@@ -145,7 +145,7 @@ To run LunaScout on a server of your own, with HTTPS and protections for public 
 - **Progress you can watch.** The progress window shows the run's stages as one bar, with a time left learned from this server's own timings. **Hide** shrinks it to a line above the timeline.
 - **Pause, resume and cancel** act only on your own request. A simulation another visitor also wants keeps running for them, and a cancel deletes nothing.
 - **Reference sites are precomputed** with the default settings and a 500 m radius, from the start of the month to the end of the next. A label such as "Ready to 31 Dec" shows which are done.
-- **Site size.** New sites start with a 50 m radius; the largest is 500 m. The first run at a new site builds a terrain horizon map (about a minute at 500 m), which later runs at that centre reuse.
+- **Site size and grid.** New sites start with a 50 m radius; the largest is 500 m. The grid spacing follows the site's size, about 10 cells across the radius and between 5 and 20 m: 5 m for a 50 m site, 10 m for 100 m, and 20 m from 200 m up. Set a spacing in Settings to override it. The first run at a new site builds a terrain horizon map (about a minute at 500 m), which later runs at that centre reuse.
 - **Activity menu** shows what the worker is doing and every recent simulation.
 
 The reasons behind these behaviours are in [How the website behaves](docs/app-flows.md) and [Runs, reuse and the queue](docs/runs.md).

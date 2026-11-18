@@ -117,7 +117,7 @@ The server runs in public mode (`LUNASCOUT_PUBLIC_MODE=1`, set in `/etc/lunascou
 
 - **Each visitor's sites stay in their own browser.** The server-side site list is turned off, so visitors cannot change each other's sites.
 - **Deleting saved results is turned off.** Results are shared between visitors.
-- **Runs are limited:** at most 35 days, a site radius up to 500 m, a grid spacing of at least 20 m, and at most 20 visitors' simulations waiting at once; simulations already covered by stored results do not count. A busy server answers "try again in a few minutes".
+- **Runs are limited:** at most 35 days, a site radius up to 500 m, a grid spacing of at least 5 m with at most 2,500 grid points per run, and at most 20 visitors' simulations waiting at once; simulations already covered by stored results do not count. A busy server answers "try again in a few minutes".
 - **Heavy requests are rate limited** per visitor.
 - **Pause and cancel only affect the visitor's own request.** A simulation several visitors asked for keeps running until none of them wants it, and the precomputed reference sites are never stopped by a visitor. A cancel deletes nothing; results nobody has asked for in 14 days are cleaned up when the worker starts.
 
