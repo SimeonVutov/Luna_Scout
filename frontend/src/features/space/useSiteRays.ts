@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { runRays, siteRays } from "../../api/client";
-import type { RayFan, RunStatus, SimulationOptions, Site, SiteRays, TimeRange } from "../../api/types";
+import { resolveOptions } from "../settings/gridSpacing";
+import type { RayFan, RunStatus, ChosenOptions, Site, SiteRays, TimeRange } from "../../api/types";
 
 /** What the 3D view draws: Sun and Earth fans from points across the site. */
 export type ShownRays = { sun: RayFan[]; earth: RayFan[]; from: "simulation" | "on demand" };
@@ -38,7 +39,7 @@ function fromOnDemand(rays: SiteRays): ShownRays {
  * demand otherwise. While the next time loads, the previous rays stay on screen.
  */
 export function useSiteRays(
-  site: Site | null, run: RunStatus | null, range: TimeRange, options: SimulationOptions,
+  site: Site | null, run: RunStatus | null, range: TimeRange, options: ChosenOptions,
   timeIndex: number, enabled: boolean,
 ) {
   const [shown, setShown] = useState<{ siteKey: string; key: string; rays: ShownRays } | null>(null);
@@ -56,7 +57,7 @@ export function useSiteRays(
       ? `run/${run.run_id}/${index}`
       : JSON.stringify([
         "demand", siteKey, range.start_utc, range.end_utc, options.integration_minutes, sampleIndex,
-        options.solar_disk_samples, options.mast_height_m, options.collector_height_m, options.receiver, options.grid_spacing_m,
+        options.solar_disk_samples, options.mast_height_m, options.collector_height_m, options.receiver, site ? resolveOptions(options, site).grid_spacing_m : null,
       ]);
     return { key, saved, sampleIndex };
   }
@@ -76,7 +77,7 @@ export function useSiteRays(
         missing.add(key);
       }
     }
-    remember(key, fromOnDemand(await siteRays(site, range, options, sampleIndex, true, signal)));
+    remember(key, fromOnDemand(await siteRays(site, range, resolveOptions(options, site), sampleIndex, true, signal)));
   }
 
   const { key } = sourceOf(timeIndex);

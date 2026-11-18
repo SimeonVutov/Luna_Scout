@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { precomputedCoverage } from "../../api/client";
-import type { Coverage, SimulationOptions, SiteSpec } from "../../api/types";
+import type { ChosenOptions, Coverage, SimulationOptions, SiteSpec } from "../../api/types";
 import { defaultOptions } from "../results/useScience";
+import { resolveOptions } from "../settings/gridSpacing";
 
 const dayFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 const dayMs = 86_400_000;
@@ -22,8 +23,11 @@ export function usePrecomputed() {
   return coverage;
 }
 
-function sameOptions(options: SimulationOptions) {
-  return (Object.keys(defaultOptions) as (keyof SimulationOptions)[]).every((key) => options[key] === defaultOptions[key]);
+/** Whether this site's request, once the grid spacing is chosen for its size, is the precomputed one. */
+function sameOptions(options: ChosenOptions, site: SiteSpec) {
+  const requested = resolveOptions(options, site);
+  const precomputed = resolveOptions(defaultOptions, site);
+  return (Object.keys(precomputed) as (keyof SimulationOptions)[]).every((key) => requested[key] === precomputed[key]);
 }
 
 /**
@@ -31,8 +35,8 @@ function sameOptions(options: SimulationOptions) {
  * adding it shows results at once. Null with non-default settings, which the precompute does
  * not cover.
  */
-export function readyLabel(coverage: Coverage[], site: SiteSpec, options: SimulationOptions) {
-  if (!sameOptions(options)) return null;
+export function readyLabel(coverage: Coverage[], site: SiteSpec, options: ChosenOptions) {
+  if (!sameOptions(options, site)) return null;
 
   const match = coverage.find((item) =>
     item.complete && item.latitude_deg === site.latitude_deg && item.longitude_deg === site.longitude_deg);

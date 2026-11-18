@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 import { errorText } from "../../api/errorText";
 import { lookupRun } from "../../api/client";
-import type { RunLookup, SimulationOptions, Site, TimeRange } from "../../api/types";
+import type { RunLookup, ChosenOptions, Site, TimeRange } from "../../api/types";
+import { resolveOptions } from "../settings/gridSpacing";
 import { snapshotAt } from "./time";
 
 /** A saved site whose results do not yet cover a range the user asked for. */
@@ -21,7 +22,7 @@ export type PendingRange = { range: TimeRange; missing: MissingResults[]; change
 
 type Inputs = {
   sites: Site[];
-  options: SimulationOptions;
+  options: ChosenOptions;
   /** Show this range on the timeline. */
   apply: (range: TimeRange) => void;
   /** Whether this browser has already asked for exactly this site and range, so it is on its way. */
@@ -67,7 +68,7 @@ export function useRangeChange({ sites, options, apply, wanted, run, onStarted, 
     const samplesPerDay = 1440 / options.integration_minutes;
 
     const answers = await Promise.allSettled(supported.map((site) =>
-      lookupRun({ ...range, ...options, site, priority_utc: first }, new AbortController().signal)));
+      lookupRun({ ...range, ...resolveOptions(options, site), site, priority_utc: first }, new AbortController().signal)));
 
     // A site that could not be asked about is left out: it behaves as it always did.
     return answers.flatMap((answer, index): MissingResults[] => {

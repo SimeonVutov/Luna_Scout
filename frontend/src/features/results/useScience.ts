@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cancelRun, lookupRun, pauseRun, prioritizeRuns, resumeRun, runEvents, runSeries, runSnapshot, runStatus, submitRun } from "../../api/client";
-import type { FramePayload, Reading, RunStatus, SimulationOptions, Site, TimeRange } from "../../api/types";
+import type { ChosenOptions, FramePayload, Reading, RunStatus, SimulationOptions, Site, TimeRange } from "../../api/types";
+import { resolveOptions } from "../settings/gridSpacing";
 
 const storageKey = "lunascout.runs.v1";
 
@@ -21,7 +22,8 @@ export const defaultOptions: SimulationOptions = {
  */
 const MODEL_REVISION = 6;
 
-function requestKey(site: Site, range: TimeRange, options: SimulationOptions) {
+function requestKey(site: Site, range: TimeRange, chosen: ChosenOptions) {
+  const options = resolveOptions(chosen, site);
   return JSON.stringify([
     site.latitude_deg, site.longitude_deg, site.radius_m,
     range.start_utc, range.end_utc, range.snapshot_minutes,
@@ -61,7 +63,7 @@ export function isActive(run: RunStatus | null | undefined) {
   return run?.stage === "queued" || run?.stage === "running";
 }
 
-export function useScience(sites: Site[], range: TimeRange, options: SimulationOptions, atUtc: string) {
+export function useScience(sites: Site[], range: TimeRange, options: ChosenOptions, atUtc: string) {
   const [ids, setIds] = useState(readRunIds);
   const [statuses, setStatuses] = useState<Record<string, RunStatus>>({});
   const [pending, setPending] = useState<Record<string, boolean>>({});
@@ -129,7 +131,7 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
     const key = requestKey(site, target, options);
     setPending((current) => ({ ...current, [key]: true }));
     try {
-      const status = await submitRun({ ...target, ...options, site, priority_utc: priorityAt });
+      const status = await submitRun({ ...target, ...resolveOptions(options, site), site, priority_utc: priorityAt });
       accept(status);
       setIds((current) => ({ ...current, [key]: status.run_id }));
     } finally {
@@ -149,7 +151,7 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
       if (site.latitude_deg > -60 || ids[key] || pending[key] || lookedUp.current.has(key)) continue;
 
       lookedUp.current.add(key);
-      const request = { ...range, ...options, site, priority_utc: atUtc };
+      const request = { ...range, ...resolveOptions(options, site), site, priority_utc: atUtc };
       void lookupRun(request, new AbortController().signal).then((found) => {
         const existing = found.run;
         if (existing) {
