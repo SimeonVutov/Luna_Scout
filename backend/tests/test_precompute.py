@@ -1,6 +1,7 @@
 """Precomputed reference sites: they match the website, wait behind visitors, and are cleaned up."""
 
 import json
+import math
 import re
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -27,9 +28,19 @@ def test_the_reference_sites_and_defaults_match_the_website_exactly():
     assert f"radius_m: {REFERENCE_RADIUS_M} }}" in listing
 
     science = (FRONTEND / "features" / "results" / "useScience.ts").read_text(encoding="utf-8")
-    block = re.search(r"defaultOptions: SimulationOptions = \{(.*?)\};", science, re.S).group(1)
-    website_options = {key: json.loads(value) for key, value in re.findall(r'(\w+): ("[^"]*"|[\d.]+)', block)}
-    assert website_options == DEFAULT_OPTIONS
+    block = re.search(r"defaultOptions: ChosenOptions = \{(.*?)\};", science, re.S).group(1)
+    website_options = {key: json.loads(value) for key, value in re.findall(r'(\w+): ("[^"]*"|[\d.]+|null)', block)}
+
+    # The website leaves the grid spacing automatic. For the reference sites' radius, the rule must
+    # give the spacing the precomputed runs used, or the website would not find them.
+    assert website_options.pop("grid_spacing_m") is None
+    rule = (FRONTEND / "features" / "settings" / "gridSpacing.ts").read_text(encoding="utf-8")
+    finest, coarsest, step, cells = (
+        float(re.search(rf"const {name} = ([\d.]+);", rule).group(1)) for name in ("FINEST_M", "COARSEST_M", "STEP_M", "CELLS_ACROSS_RADIUS")
+    )
+    automatic = min(coarsest, max(finest, step * math.floor(REFERENCE_RADIUS_M / (cells * step) + 0.5)))
+    assert automatic == DEFAULT_OPTIONS["grid_spacing_m"]
+    assert website_options == {key: value for key, value in DEFAULT_OPTIONS.items() if key != "grid_spacing_m"}
 
     time_module = (FRONTEND / "features" / "timeline" / "time.ts").read_text(encoding="utf-8")
     assert f"snapshot_minutes: {DEFAULT_SNAPSHOT_MINUTES}," in time_module

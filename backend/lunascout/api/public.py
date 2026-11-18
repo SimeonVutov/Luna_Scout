@@ -6,6 +6,7 @@ the routes that change data shared by every visitor: the server-side site catalo
 saved results. Visitors keep their own site list in their browser.
 """
 
+import math
 import os
 import time
 from collections import defaultdict, deque
@@ -37,7 +38,10 @@ class PublicMode:
     enabled: bool = False
     # A bit more than one lunar day (29.5 days), so a full day and night can be compared.
     max_range: timedelta = timedelta(days=35)
-    min_grid_spacing_m: float = 20.0
+    min_grid_spacing_m: float = 5.0
+    # Points in the site's grid, about π(r/s)² for radius r and spacing s. The reference sites'
+    # 500 m radius at 20 m has 1,963; the same site at 10 m would have four times as many.
+    max_grid_points: int = 2500
     max_solar_disk_samples: int = 61
     # Visitors' runs waiting or running at once, across the server. The single worker handles them
     # one after another; runs already covered by stored results are not counted.
@@ -63,6 +67,11 @@ class PublicMode:
             raise HTTPException(422, f"The public server allows at most {self.max_range.days} days per run.")
         if spec.grid_spacing_m < self.min_grid_spacing_m:
             raise HTTPException(422, f"The public server needs a grid spacing of at least {self.min_grid_spacing_m:g} m.")
+        # Grid points: n ≈ π (r/s)²
+        #   r (spec.site.radius_m) - Site radius in metres; s (spec.grid_spacing_m) - Grid spacing in metres.
+        points = math.pi * (spec.site.radius_m / spec.grid_spacing_m) ** 2
+        if points > self.max_grid_points:
+            raise HTTPException(422, f"The public server allows at most {self.max_grid_points:,} grid points per run. Increase the grid spacing.")
         if spec.solar_disk_samples > self.max_solar_disk_samples:
             raise HTTPException(422, f"The public server allows at most {self.max_solar_disk_samples} Sun disk samples.")
 

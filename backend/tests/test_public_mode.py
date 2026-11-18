@@ -45,6 +45,22 @@ def test_a_public_server_refuses_oversized_runs_and_a_busy_queue_but_reuses_exis
         public.require_private()
 
 
+def test_a_public_server_allows_fine_grids_only_for_small_sites():
+    public = PublicMode(enabled=True)
+    small = SiteSpec(name="t", latitude_deg=-89.5, longitude_deg=10, radius_m=50)
+    big = SiteSpec(name="t", latitude_deg=-89.5, longitude_deg=10, radius_m=500)
+
+    # The reference sites' grid (500 m at 20 m, 1,963 points) and a small site at 5 m (314) are fine.
+    public.check_run(_spec(site=big, grid_spacing_m=20), unfinished_runs=0)
+    public.check_run(_spec(site=small, grid_spacing_m=5), unfinished_runs=0)
+
+    # The same fine grid on a big site is four to sixteen times the work, and below 5 m is never allowed.
+    for refused in (_spec(site=big, grid_spacing_m=10), _spec(site=big, grid_spacing_m=5), _spec(site=small, grid_spacing_m=2)):
+        with pytest.raises(HTTPException) as error:
+            public.check_run(refused, unfinished_runs=0)
+        assert error.value.status_code == 422
+
+
 def test_the_limiter_counts_each_visitor_and_route_separately_and_forgets_after_a_minute():
     limiter = RequestLimiter({"POST /api/runs": 2}, window_s=60)
 
