@@ -153,11 +153,12 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
       void lookupRun(request, new AbortController().signal).then((found) => {
         const existing = found.run;
         if (existing) {
-          accept(existing);
-          setIds((current) => ({ ...current, [key]: existing.run_id }));
-          // Joining an unfinished run records this browser as wanting it, so another browser
-          // pausing or cancelling it cannot stop it for this one.
-          if (existing.stage !== "complete") void run(site, range, atUtc).catch(() => undefined);
+          // Only a finished run is shown without asking. An unfinished one is taken on when the
+          // user presses Run or agrees to compute the missing dates.
+          if (existing.stage === "complete") {
+            accept(existing);
+            setIds((current) => ({ ...current, [key]: existing.run_id }));
+          }
         } else if (found.reusable_samples >= found.total_samples) {
           // Everything is already computed, so showing it costs nothing. Anything missing is
           // computed only when the user asks (Run) or agrees (new dates).
@@ -168,6 +169,11 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
   // `run` and `atUtc` change on every render and do not change what a lookup finds.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sites, range, options, ids, accept]);
+
+  /** Whether this browser has asked for exactly this site and range. */
+  function wanted(site: Site, target: TimeRange) {
+    return Boolean(ids[requestKey(site, target, options)]);
+  }
 
   /** Stop computing a site's run, keeping what is done. */
   async function pause(site: Site) {
@@ -216,6 +222,7 @@ export function useScience(sites: Site[], range: TimeRange, options: SimulationO
 
   return {
     run,
+    wanted,
     pause,
     resume,
     cancel,

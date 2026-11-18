@@ -95,6 +95,7 @@ export function App() {
   const rangeChange = useRangeChange({
     sites, options,
     apply: (next) => { setTimeIndex(0); setRange(next); },
+    wanted: science.wanted,
     run: (site, target, priorityAt) => science.run(site, target, priorityAt),
     onStarted: (started) => { progress.show(started); void activity.refresh(); },
     onProblems: setError,
